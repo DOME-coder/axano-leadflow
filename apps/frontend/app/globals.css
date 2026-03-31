@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===================================
+   AXANO DESIGN TOKENS
+   Außerhalb von @layer damit Tailwind
+   die .dark Variablen nicht entfernt
+   =================================== */
+
+:root {
+  /* Axano Corporate Design */
+  --axano-primaer: #1a2b4c;
+  --axano-sekundaer: #2f3542;
+  --axano-graphit: #3f4e65;
+  --axano-sky-blue: #c7d7e8;
+  --axano-soft-cloud: #f5f7fa;
+  --axano-orange: #ff8049;
+
+  /* Semantische Farben */
+  --axano-erfolg: #22c55e;
+  --axano-warnung: #f59e0b;
+  --axano-fehler: #ef4444;
+  --axano-info: #3b82f6;
+
+  /* UI-Variablen – Light Mode */
+  --seite: #f5f7fa;
+  --karte: #ffffff;
+  --karte-erhoeht: #f5f7fa;
+  --text-titel: #1a2b4c;
+  --text-normal: #2f3542;
+  --text-sekundaer: #6b7d94;
+  --text-tertiaer: #94a3b8;
+  --rahmen: #d5e1ed;
+  --rahmen-leicht: #e4ecf4;
+  --eingabe-bg: #ffffff;
+  --eingabe-rahmen: #c7d7e8;
+  --hover-bg: #f0f4f8;
+}
+
+.dark {
+  /* UI-Variablen – Dark Mode */
+  --seite: #0f1623;
+  --karte: #1a2435;
+  --karte-erhoeht: #1f2d42;
+  --text-titel: #f0f4f8;
+  --text-normal: #d0dae8;
+  --text-sekundaer: #8da4be;
+  --text-tertiaer: #4a6280;
+  --rahmen: #2a3f5a;
+  --rahmen-leicht: #223148;
+  --eingabe-bg: #0f1623;
+  --eingabe-rahmen: #2a3f5a;
+  --hover-bg: #1f2d42;
+}
+
+/* ===================================
+   AXANO UTILITY-KLASSEN
+   Verwenden CSS-Variablen → reagieren
+   automatisch auf .dark Klasse
+   =================================== */
+
+.ax-seite {
+  background-color: var(--seite);
+}
+
+.ax-karte {
+  background-color: var(--karte);
+  border: 1px solid var(--rahmen);
+}
+
+.ax-karte-erhoeht {
+  background-color: var(--karte-erhoeht);
+}
+
+.ax-titel {
+  color: var(--text-titel);
+}
+
+.ax-text {
+  color: var(--text-normal);
+}
+
+.ax-text-sekundaer {
+  color: var(--text-sekundaer);
+}
+
+.ax-text-tertiaer {
+  color: var(--text-tertiaer);
+}
+
+.ax-rahmen {
+  border-color: var(--rahmen);
+}
+
+.ax-rahmen-leicht {
+  border-color: var(--rahmen-leicht);
+}
+
+.ax-eingabe {
+  background-color: var(--eingabe-bg);
+  border: 1px solid var(--eingabe-rahmen);
+  color: var(--text-normal);
+}
+
+.ax-eingabe:focus {
+  border-color: var(--axano-orange);
+  box-shadow: 0 0 0 2px rgba(255, 128, 73, 0.25);
+  outline: none;
+}
+
+.ax-eingabe::placeholder {
+  color: var(--text-tertiaer);
+}
+
+.ax-hover:hover {
+  background-color: var(--hover-bg);
+}
+
+/* ===================================
+   BASIS-STYLES
+   =================================== */
+
+@layer base {
+  * {
+    border-color: var(--rahmen-leicht);
+  }
+  body {
+    background-color: var(--seite);
+    color: var(--text-normal);
+    font-family: 'Manrope', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Skeleton Loader */
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--karte-erhoeht) 25%,
+    var(--rahmen) 50%,
+    var(--karte-erhoeht) 75%);
+  background-size: 200% 100%;
+  animation: schimmern 1.5s infinite;
+}
+
+@keyframes schimmern {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rahmen);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-sekundaer);
+}

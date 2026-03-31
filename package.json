@@ -1,0 +1,11 @@
+{
+  "name": "axano-leadflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd apps/backend && npm run dev",
+    "dev:frontend": "cd apps/frontend && npm run dev",
+    "install:all": "cd apps/backend && npm install && cd ../../apps/frontend && npm install"
+  }
+}

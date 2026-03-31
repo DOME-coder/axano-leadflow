@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Docker Volumes
+postgres_daten/
+redis_daten/
+
+# Prisma
+apps/backend/prisma/migrationen/
+
+# Coverage
+coverage/
+
+# Temp
+tmp/
+.tmp/
