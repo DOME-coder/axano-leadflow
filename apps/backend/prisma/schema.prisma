@@ -342,6 +342,7 @@ model Termin {
   endeAm       DateTime?     @map("ende_am")
   quelle       TerminQuelle?
   externeId    String?       @map("externe_id")
+  meetingLink  String?       @map("meeting_link")
   teilnehmer   Json?
   erstelltAm   DateTime      @default(now()) @map("erstellt_am")
 

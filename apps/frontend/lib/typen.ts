@@ -145,6 +145,7 @@ export interface Termin {
   beginnAm: string;
   endeAm: string | null;
   quelle: 'calendly' | 'google_calendar' | 'manuell' | null;
+  meetingLink: string | null;
 }
 
 // Status-Farben (Light + Dark)

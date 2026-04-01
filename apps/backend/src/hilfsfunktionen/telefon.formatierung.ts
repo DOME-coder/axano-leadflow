@@ -34,3 +34,20 @@ export function telefonNormalisieren(rohTelefon: string | null | undefined): str
 
   return telefon;
 }
+
+/**
+ * Prüft ob eine Telefonnummer eine deutsche Mobilnummer ist.
+ * Mobilnummern beginnen mit 015x, 016x, 017x (nach Normalisierung: +4915x, +4916x, +4917x).
+ */
+export function istHandynummer(telefon: string): boolean {
+  const normalisiert = telefonNormalisieren(telefon);
+  if (!normalisiert) return false;
+
+  const mobilVorwahlen = [
+    '+49151', '+49152', '+49157', '+49159',
+    '+49160', '+49162', '+49163',
+    '+49170', '+49171', '+49172', '+49173', '+49174', '+49175', '+49176', '+49177', '+49178', '+49179',
+  ];
+
+  return mobilVorwahlen.some((vorwahl) => normalisiert.startsWith(vorwahl));
+}

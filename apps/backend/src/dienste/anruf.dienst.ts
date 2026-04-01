@@ -2,12 +2,13 @@ import { prisma } from '../datenbank/prisma.client';
 import { vapiAnrufStarten } from './vapi.dienst';
 import { transkriptAnalysieren, voicemailBackupCheck } from './gpt.dienst';
 import { emailMitTemplateSenden } from './email.dienst';
-import { superchatKontaktSuchen, superchatKontaktErstellen, superchatTemplateNachrichtSenden } from './whatsapp.dienst';
+import { superchatKontaktSuchen, superchatKontaktErstellen, superchatTemplateNachrichtSenden, hatLeadPerWhatsAppGeantwortet } from './whatsapp.dienst';
 import { integrationKonfigurationLesen } from './integrationen.dienst';
 import { socketServer } from '../websocket/socket.handler';
 import { logger } from '../hilfsfunktionen/logger';
 import { anrufQueue, followUpQueue } from '../jobs/queue';
 import { zeitfensterAktiv, naechsterZeitfensterbeginn } from '../hilfsfunktionen/zeitfenster';
+import { istHandynummer } from '../hilfsfunktionen/telefon.formatierung';
 
 interface AnrufZeitslot {
   stunde: number;
@@ -98,6 +99,21 @@ export async function naechstenAnrufPlanen(
 }
 
 /**
+ * Plant einen sofortigen Rückruf (5 Sek Delay) — für fehlerhaftes Auflegen.
+ */
+async function sofortigenAnrufPlanen(leadId: string, kampagneId: string, versuchNummer: number) {
+  const versuch = await prisma.anrufVersuch.create({
+    data: { leadId, kampagneId, versuchNummer, status: 'geplant', geplantFuer: new Date() },
+  });
+
+  await anrufQueue.add('anruf-durchfuehren', {
+    anrufVersuchId: versuch.id, leadId, kampagneId,
+  }, { delay: 5000, jobId: `anruf-sofort-${versuch.id}` });
+
+  logger.info(`Sofortiger Rückruf geplant (5s) für Lead ${leadId} – Versuch #${versuchNummer}`);
+}
+
+/**
  * Führt einen geplanten Anruf durch.
  */
 export async function anrufDurchfuehren(anrufVersuchId: string) {
@@ -114,7 +130,7 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
   const lead = versuch.lead;
 
   // Prüfe ob Lead bereits erreicht wurde
-  const beendendeStatus = ['Termin gebucht', 'Nicht interessiert', 'Falsche Nummer', 'Nicht erreichbar'];
+  const beendendeStatus = ['Termin gebucht', 'Nicht interessiert', 'Falsche Nummer', 'Nicht erreichbar', 'WhatsApp erhalten'];
   if (beendendeStatus.includes(lead.status)) {
     logger.info(`Lead ${lead.id} hat bereits Status "${lead.status}" – Anruf übersprungen`);
     await prisma.anrufVersuch.update({
@@ -122,6 +138,27 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       data: { status: 'abgeschlossen', fehlerNachricht: `Übersprungen: Lead-Status "${lead.status}"` },
     });
     return;
+  }
+
+  // Ab Versuch #2: Prüfe ob Lead zwischenzeitlich per WhatsApp geantwortet hat
+  if (lead.telefon && versuch.versuchNummer > 1) {
+    try {
+      const hatGeantwortet = await hatLeadPerWhatsAppGeantwortet(lead.telefon);
+      if (hatGeantwortet) {
+        logger.info(`Lead ${lead.id} hat per WhatsApp geantwortet – Anruf übersprungen`);
+        await prisma.lead.update({
+          where: { id: lead.id },
+          data: { status: 'WhatsApp erhalten' },
+        });
+        await prisma.anrufVersuch.update({
+          where: { id: anrufVersuchId },
+          data: { status: 'abgeschlossen', fehlerNachricht: 'Übersprungen: Lead hat per WhatsApp geantwortet' },
+        });
+        return;
+      }
+    } catch {
+      // Check fehlgeschlagen → weiter mit Anruf
+    }
   }
 
   const kampagne = await prisma.kampagne.findUnique({ where: { id: versuch.kampagneId } });
@@ -146,6 +183,154 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     `Anrufversuch #${versuch.versuchNummer} gestartet`);
 
   try {
+    // Bisherige Gesprächszusammenfassungen laden (ab Versuch #2)
+    let assistantOverrides: Record<string, unknown> | undefined;
+    if (versuch.versuchNummer > 1) {
+      const bisherigeVersuche = await prisma.anrufVersuch.findMany({
+        where: { leadId: lead.id, status: 'abgeschlossen', gptAnalyse: { not: null } },
+        orderBy: { versuchNummer: 'asc' },
+        select: { versuchNummer: true, gptAnalyse: true },
+      });
+
+      if (bisherigeVersuche.length > 0) {
+        const gespraechsHistorie = bisherigeVersuche
+          .map((v) => {
+            try {
+              const json = JSON.parse(v.gptAnalyse!) as { summary?: string };
+              return `Versuch #${v.versuchNummer}: ${json.summary || v.gptAnalyse}`;
+            } catch {
+              return `Versuch #${v.versuchNummer}: ${v.gptAnalyse}`;
+            }
+          })
+          .join('\n');
+
+        assistantOverrides = {
+          model: {
+            messages: [{
+              role: 'system',
+              content: `\n\n# Zusammenfassung der bisherigen Gespräche:\n${gespraechsHistorie}`,
+            }],
+          },
+        };
+      }
+    }
+
+    // Lead-Daten für den Prompt zusammenstellen
+    const leadFelddaten = await prisma.leadFelddatum.findMany({
+      where: { leadId: lead.id },
+      include: { feld: { select: { bezeichnung: true } } },
+    });
+
+    const leadInfo = [
+      `vorname: ${lead.vorname || '—'}`,
+      `nachname: ${lead.nachname || '—'}`,
+      `email: ${lead.email || '—'}`,
+      `telefon: ${lead.telefon || '—'}`,
+      ...leadFelddaten.map((f) => `${f.feld.bezeichnung}: ${f.wert || '—'}`),
+    ].join(', ');
+
+    const leadInfoMessage = {
+      role: 'system',
+      content: `\n\n# Lead Information:\n${leadInfo}`,
+    };
+
+    // Bestehende Messages (Gesprächshistorie) + Lead-Daten zusammenführen
+    const bisherMessages = (assistantOverrides?.model as Record<string, unknown> | undefined)?.messages as Array<Record<string, string>> | undefined;
+    const alleMessages = [...(bisherMessages || []), leadInfoMessage];
+
+    if (!assistantOverrides) assistantOverrides = {};
+    assistantOverrides = {
+      ...assistantOverrides,
+      model: {
+        ...(assistantOverrides.model as Record<string, unknown> | undefined),
+        messages: alleMessages,
+      },
+    };
+
+    // VAPI-Tools + Server-URL hinzufügen
+    const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
+    const vapiTools = [
+      {
+        type: 'function',
+        function: {
+          name: 'kalenderPruefen',
+          strict: true,
+          description: 'Prüft die Kalender-Verfügbarkeit zum gewünschten Zeitpunkt.',
+          parameters: {
+            type: 'object',
+            required: ['gewuenschteZeit'],
+            properties: { gewuenschteZeit: { type: 'string', description: 'Gewünschte Zeit im Format 2025-06-16T11:30:00' } },
+          },
+        },
+        messages: [{ type: 'request-start', content: 'Eine Sekunde bitte, ich schaue gerne kurz nach, ob ein Termin frei ist.', blocking: false }],
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'terminBuchen',
+          strict: true,
+          description: 'Bucht einen Termin zum bestätigten Zeitpunkt.',
+          parameters: {
+            type: 'object',
+            required: ['gewuenschteZeit', 'telefonnummer', 'vorname', 'nachname'],
+            properties: {
+              gewuenschteZeit: { type: 'string', description: 'Bestätigte Zeit im Format 2025-06-16T11:30:00' },
+              telefonnummer: { type: 'string', description: 'Telefonnummer des Leads' },
+              vorname: { type: 'string', description: 'Vorname des Leads' },
+              nachname: { type: 'string', description: 'Nachname des Leads' },
+            },
+          },
+        },
+        messages: [{ type: 'request-start', content: 'Ich stelle den Termin direkt ein.', blocking: false }],
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'rueckrufPlanen',
+          strict: true,
+          description: 'Plant einen Rückruf zu einem späteren Zeitpunkt.',
+          parameters: {
+            type: 'object',
+            required: ['telefonnummer', 'rueckrufZeit'],
+            properties: {
+              telefonnummer: { type: 'string', description: 'Telefonnummer des Leads' },
+              rueckrufZeit: { type: 'string', description: 'Gewünschte Rückrufzeit im ISO 8601 Format' },
+            },
+          },
+        },
+        messages: [{ type: 'request-start', blocking: false }],
+        async: true,
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'leadDatenKorrigieren',
+          strict: true,
+          description: 'Korrigiert Lead-Daten wenn der Angerufene eine Angabe korrigiert.',
+          parameters: {
+            type: 'object',
+            required: ['telefonnummer', 'datenTyp', 'neuerWert'],
+            properties: {
+              telefonnummer: { type: 'string', description: 'Telefonnummer des Leads' },
+              datenTyp: { type: 'string', description: 'Art der Information: email, telefon, vorname, nachname' },
+              neuerWert: { type: 'string', description: 'Der korrigierte Wert' },
+            },
+          },
+        },
+        messages: [{ type: 'request-start', blocking: false }],
+        async: true,
+      },
+    ];
+
+    assistantOverrides = {
+      ...assistantOverrides,
+      server: { url: `${apiBaseUrl}/api/v1/webhooks/vapi/tools`, timeoutSeconds: 20 },
+      model: {
+        ...(assistantOverrides?.model as Record<string, unknown> | undefined),
+        tools: vapiTools,
+      },
+    };
+
     // VAPI-Anruf starten
     const kundeName = [lead.vorname, lead.nachname].filter(Boolean).join(' ');
     const callId = await vapiAnrufStarten(
@@ -157,7 +342,8 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
         leadId: lead.id,
         kampagneId: versuch.kampagneId,
         versuchNr: String(versuch.versuchNummer),
-      }
+      },
+      assistantOverrides
     );
 
     // Call-ID speichern (Lead + AnrufVersuch)
@@ -375,6 +561,17 @@ export async function anrufErgebnisVerarbeiten(
     }
   }
 
+  // Fehlerhaftes Auflegen: Assistant hat aufgelegt obwohl Gespräch lief → sofortiger Retry
+  const assistantAufgelegt = ['assistant-ended-call', 'assistant-ended-call-after-message-spoken'];
+  if (assistantAufgelegt.includes(endedReason) && ['hung_up', 'disconnected'].includes(analyse.ergebnis) && transkript && transkript.length > 50) {
+    logger.info(`Fehlerhaftes Auflegen erkannt bei Anruf ${vapiCallId} – sofortiger Rückruf`);
+    await aktivitaetLoggen(versuch.leadId, 'anruf_fehlgeschlagen',
+      `Anruf #${versuch.versuchNummer}: Fehlerhaftes Auflegen (${endedReason}) – sofortiger Rückruf`);
+    await sofortigenAnrufPlanen(versuch.leadId, versuch.kampagneId, versuch.versuchNummer + 1);
+    emitAnrufErgebnis(versuch.kampagneId, versuch.leadId, versuch.versuchNummer, 'fehlerhaftes_auflegen');
+    return;
+  }
+
   // Bei voicemail/nicht_abgenommen/aufgelegt/hung_up/disconnected: nächsten Versuch planen
   const retryErgebnisse = ['voicemail', 'nicht_abgenommen', 'aufgelegt', 'hung_up', 'disconnected'];
   if (retryErgebnisse.includes(analyse.ergebnis)) {
@@ -481,8 +678,8 @@ export async function followUpDirektSenden(
     }
   }
 
-  // WhatsApp senden (wenn aktiviert + Template + Kanal vorhanden)
-  if (kampagne.whatsappAktiviert && whatsappTemplateId && kampagne.whatsappKanalId && lead.telefon) {
+  // WhatsApp senden (wenn aktiviert + Template + Kanal + Handynummer)
+  if (kampagne.whatsappAktiviert && whatsappTemplateId && kampagne.whatsappKanalId && lead.telefon && istHandynummer(lead.telefon)) {
     try {
       const superchatKonfig = await integrationKonfigurationLesen('superchat');
       if (superchatKonfig?.api_schluessel) {

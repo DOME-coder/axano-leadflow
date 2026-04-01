@@ -220,6 +220,7 @@ export async function leadAbrufen(id: string) {
         orderBy: { erstelltAm: 'desc' },
       },
       aktivitaeten: { orderBy: { erstelltAm: 'desc' }, take: 50 },
+      termine: { orderBy: { beginnAm: 'desc' }, take: 5 },
     },
   });
 

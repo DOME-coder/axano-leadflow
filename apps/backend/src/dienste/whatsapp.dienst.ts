@@ -1,4 +1,5 @@
 import { logger } from '../hilfsfunktionen/logger';
+import { integrationKonfigurationLesen } from './integrationen.dienst';
 
 interface SuperchatKontakt {
   id: string;
@@ -173,6 +174,66 @@ export async function superchatTemplateNachrichtSenden(
     return true;
   } catch (fehler) {
     logger.error('Superchat-Versand fehlgeschlagen:', { error: fehler });
+    return false;
+  }
+}
+
+/**
+ * Prüft ob ein Lead zwischenzeitlich per WhatsApp geantwortet hat.
+ * Nutzt Superchat API: Kontakt suchen → Konversationen → time_window.state prüfen.
+ */
+export async function hatLeadPerWhatsAppGeantwortet(telefon: string): Promise<boolean> {
+  try {
+    const konfig = await integrationKonfigurationLesen('superchat');
+    if (!konfig?.api_schluessel) return false;
+
+    const basisUrl = konfig.basis_url || 'https://api.superchat.de';
+    const headers = {
+      'Authorization': `Bearer ${konfig.api_schluessel}`,
+      'Content-Type': 'application/json',
+    };
+
+    // 1. Kontakt suchen
+    const kontaktAntwort = await fetch(
+      `${basisUrl}/v1/contacts?phone=${encodeURIComponent(telefon)}`,
+      { headers }
+    );
+    if (!kontaktAntwort.ok) return false;
+
+    const kontaktDaten = await kontaktAntwort.json() as { data?: Array<{ id: string }> };
+    const kontaktId = kontaktDaten.data?.[0]?.id;
+    if (!kontaktId) return false;
+
+    // 2. Konversationen abrufen
+    const konvAntwort = await fetch(
+      `${basisUrl}/v1/contacts/${kontaktId}/conversations`,
+      { headers }
+    );
+    if (!konvAntwort.ok) return false;
+
+    const konvDaten = await konvAntwort.json() as { data?: Array<{ id: string }> };
+    const konvId = konvDaten.data?.[0]?.id;
+    if (!konvId) return false;
+
+    // 3. Konversation-Details abrufen
+    const detailAntwort = await fetch(
+      `${basisUrl}/v1/conversations/${konvId}`,
+      { headers }
+    );
+    if (!detailAntwort.ok) return false;
+
+    const detailDaten = await detailAntwort.json() as { data?: { time_window?: { state?: string } } };
+    const zeitfensterStatus = detailDaten.data?.time_window?.state;
+
+    // "closed" = Lead hat geantwortet (Zeitfenster für Antwort ist geschlossen)
+    if (zeitfensterStatus === 'closed') {
+      logger.info(`WhatsApp-Antwort erkannt für ${telefon} – Retry wird gestoppt`);
+      return true;
+    }
+
+    return false;
+  } catch (fehler) {
+    logger.error('WhatsApp-Antwort-Check fehlgeschlagen:', { telefon, error: fehler });
     return false;
   }
 }

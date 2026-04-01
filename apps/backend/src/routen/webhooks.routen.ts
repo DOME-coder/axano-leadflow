@@ -291,6 +291,62 @@ webhooksRouter.post('/superchat/:kampagneSlug', async (req: Request, res: Respon
 });
 
 // ──────────────────────────────────────────────
+// VAPI Tools Webhook (Kalender, Termin, Rückruf, Lead-Korrektur)
+// ──────────────────────────────────────────────
+webhooksRouter.post('/vapi/tools', async (req: Request, res: Response, _next: NextFunction) => {
+  try {
+    const { kalenderPruefen, terminBuchen, rueckrufPlanen, leadDatenKorrigieren } = await import('../dienste/vapi-tools.dienst');
+
+    const toolCall = req.body?.message?.toolCalls?.[0];
+    if (!toolCall) {
+      res.status(200).json({ results: [] });
+      return;
+    }
+
+    const toolName = toolCall.function?.name;
+    const args = typeof toolCall.function?.arguments === 'string'
+      ? JSON.parse(toolCall.function.arguments)
+      : toolCall.function?.arguments || {};
+    const toolCallId = toolCall.id;
+
+    logger.info(`VAPI Tool-Call: ${toolName}`, { args });
+
+    let ergebnis = '';
+
+    switch (toolName) {
+      case 'kalenderPruefen':
+        ergebnis = await kalenderPruefen(args.gewuenschteZeit);
+        break;
+
+      case 'terminBuchen':
+        ergebnis = await terminBuchen(args.gewuenschteZeit, args.telefonnummer, args.vorname, args.nachname);
+        break;
+
+      case 'rueckrufPlanen':
+        ergebnis = await rueckrufPlanen(args.telefonnummer, args.rueckrufZeit);
+        break;
+
+      case 'leadDatenKorrigieren':
+        await leadDatenKorrigieren(args.telefonnummer, args.datenTyp, args.neuerWert);
+        break;
+
+      default:
+        logger.warn(`Unbekannter VAPI Tool-Call: ${toolName}`);
+        ergebnis = 'Dieses Tool ist nicht verfügbar.';
+    }
+
+    res.status(200).json({
+      results: [{ toolCallId, result: ergebnis }],
+    });
+  } catch (fehler) {
+    logger.error('VAPI Tool-Call fehlgeschlagen:', { error: fehler });
+    res.status(200).json({
+      results: [{ toolCallId: req.body?.message?.toolCalls?.[0]?.id, result: 'Oh, da scheint gerade etwas nicht zu funktionieren. Ich notiere mir das und wir kümmern uns darum.' }],
+    });
+  }
+});
+
+// ──────────────────────────────────────────────
 // VAPI End-of-Call Webhook
 // ──────────────────────────────────────────────
 webhooksRouter.post('/vapi', async (req: Request, res: Response, next: NextFunction) => {
@@ -373,16 +429,23 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
       return;
     }
 
-    // Lead suchen (über alle Kampagnen)
-    const lead = await prisma.lead.findFirst({
-      where: {
-        geloescht: false,
-        OR: [
-          ...(email ? [{ email }] : []),
-        ],
-      },
+    // Meeting-Link und Telefon aus Payload extrahieren
+    const meetingLink = payload?.scheduled_event?.location?.join_url as string | undefined;
+    const questionsAndAnswers = payload?.questions_and_answers as Array<{ answer: string }> | undefined;
+    const telefonAusFormular = questionsAndAnswers?.[0]?.answer?.replace(/\s+/g, '') || undefined;
+
+    // Lead suchen: 1. Per E-Mail, 2. Per Telefon (Fallback)
+    let lead = email ? await prisma.lead.findFirst({
+      where: { geloescht: false, email },
       orderBy: { erstelltAm: 'desc' },
-    });
+    }) : null;
+
+    if (!lead && telefonAusFormular) {
+      lead = await prisma.lead.findFirst({
+        where: { geloescht: false, telefon: { contains: telefonAusFormular.replace(/^\+49/, '').replace(/^0/, '') } },
+        orderBy: { erstelltAm: 'desc' },
+      });
+    }
 
     if (lead) {
       // Status auf "Termin gebucht" setzen
@@ -400,15 +463,17 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
         },
       });
 
-      // Termin speichern
+      // Termin speichern (mit Meeting-Link)
       await prisma.termin.create({
         data: {
           leadId: lead.id,
           kampagneId: lead.kampagneId,
           titel: `Calendly-Termin: ${name || email}`,
           beginnAm: scheduledAt ? new Date(scheduledAt) : new Date(),
+          endeAm: payload?.scheduled_event?.end_time ? new Date(payload.scheduled_event.end_time) : undefined,
           quelle: 'calendly',
           externeId: payload?.uri as string || undefined,
+          meetingLink: meetingLink || undefined,
         },
       });
 
@@ -416,7 +481,7 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
         data: {
           leadId: lead.id,
           typ: 'termin_gebucht',
-          beschreibung: `Termin über Calendly gebucht${scheduledAt ? ` am ${new Date(scheduledAt).toLocaleString('de-DE')}` : ''}`,
+          beschreibung: `Termin über Calendly gebucht${scheduledAt ? ` am ${new Date(scheduledAt).toLocaleString('de-DE')}` : ''}${meetingLink ? ` – Meeting: ${meetingLink}` : ''}`,
         },
       });
 
@@ -428,9 +493,25 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
         });
       }
 
-      logger.info(`Calendly: Lead ${lead.id} → Termin gebucht`);
+      logger.info(`Calendly: Lead ${lead.id} → Termin gebucht${meetingLink ? ` (Meeting: ${meetingLink})` : ''}`);
     } else {
-      logger.warn(`Calendly: Kein Lead gefunden für ${email}`);
+      // Fallback: Admin-E-Mail senden
+      logger.warn(`Calendly: Kein Lead gefunden für ${email || telefonAusFormular}`);
+      try {
+        const { emailSenden } = await import('../dienste/email.dienst');
+        await emailSenden({
+          an: process.env.ADMIN_EMAIL || 'admin@axano.de',
+          betreff: 'Calendly: Termin gebucht – Lead nicht gefunden',
+          html: `<p>Ein Termin wurde über Calendly gebucht, aber der Lead konnte nicht zugeordnet werden.</p>
+            <p><strong>Name:</strong> ${name || '—'}</p>
+            <p><strong>E-Mail:</strong> ${email || '—'}</p>
+            <p><strong>Telefon:</strong> ${telefonAusFormular || '—'}</p>
+            <p><strong>Termin:</strong> ${scheduledAt || '—'}</p>
+            <p>Bitte manuell zuordnen.</p>`,
+        });
+      } catch {
+        // E-Mail-Versand fehlgeschlagen → nur loggen
+      }
     }
 
     res.status(200).json({ erfolg: true });

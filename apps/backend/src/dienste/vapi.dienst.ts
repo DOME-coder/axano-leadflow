@@ -25,7 +25,8 @@ export async function vapiAnrufStarten(
   assistantId: string,
   telefonNummerId: string,
   kundeName?: string,
-  metadata?: Record<string, string>
+  metadata?: Record<string, string>,
+  assistantOverrides?: Record<string, unknown>
 ): Promise<string> {
   const apiKey = await vapiApiKeyLesen();
 
@@ -38,6 +39,10 @@ export async function vapiAnrufStarten(
     },
     metadata,
   };
+
+  if (assistantOverrides) {
+    body.assistantOverrides = assistantOverrides;
+  }
 
   try {
     const antwort = await fetch('https://api.vapi.ai/call', {

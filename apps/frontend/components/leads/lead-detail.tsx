@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Send, Clock, User, Mail, Phone } from 'lucide-react';
+import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink } from 'lucide-react';
 import { benutzeLead, benutzeNotizHinzufuegen } from '@/hooks/benutze-leads';
 import { statusFarbeErmitteln } from '@/lib/typen';
 
@@ -127,6 +127,40 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
                       <span className={`font-medium px-1.5 py-0.5 rounded ${statusFarbeErmitteln(eintrag.neuerStatus)}`}>
                         {eintrag.neuerStatus}
                       </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Termine */}
+            {lead.termine && lead.termine.length > 0 && (
+              <div className="px-6 py-4 border-b ax-rahmen-leicht">
+                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-3">
+                  Termine
+                </h4>
+                <div className="space-y-2">
+                  {lead.termine.map((termin: { id: string; titel: string; beginnAm: string; quelle?: string; meetingLink?: string | null }) => (
+                    <div key={termin.id} className="ax-karte-erhoeht rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium ax-titel flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" /> {termin.titel}
+                        </span>
+                        {termin.quelle && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                            {termin.quelle}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs ax-text-sekundaer">
+                        {new Date(termin.beginnAm).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </p>
+                      {termin.meetingLink && (
+                        <a href={termin.meetingLink} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-axano-orange hover:underline mt-1 inline-flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3" /> Meeting beitreten
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>
