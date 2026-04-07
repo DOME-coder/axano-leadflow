@@ -4,11 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Plus, Building2, Search, ArrowUpRight } from 'lucide-react';
 import { benutzeKunden, benutzeKundeErstellen } from '@/hooks/benutze-kunden';
+import { useToastStore } from '@/stores/toast-store';
 
 export default function KundenSeite() {
   const [suche, setSuche] = useState('');
   const { data, isLoading } = benutzeKunden({ suche: suche || undefined });
   const kundeErstellen = benutzeKundeErstellen();
+  const { toastAnzeigen } = useToastStore();
 
   const [neuerKunde, setNeuerKunde] = useState(false);
   const [name, setName] = useState('');
@@ -24,6 +26,7 @@ export default function KundenSeite() {
       email: email.trim() || undefined,
       branche: branche.trim() || undefined,
     });
+    toastAnzeigen('erfolg', 'Kunde erstellt');
     setNeuerKunde(false);
     setName('');
     setKontaktperson('');

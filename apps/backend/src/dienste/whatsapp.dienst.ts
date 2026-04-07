@@ -1,5 +1,5 @@
 import { logger } from '../hilfsfunktionen/logger';
-import { integrationKonfigurationLesen } from './integrationen.dienst';
+import { integrationKonfigurationLesenMitFallback } from './integrationen.dienst';
 
 interface SuperchatKontakt {
   id: string;
@@ -182,9 +182,9 @@ export async function superchatTemplateNachrichtSenden(
  * Prüft ob ein Lead zwischenzeitlich per WhatsApp geantwortet hat.
  * Nutzt Superchat API: Kontakt suchen → Konversationen → time_window.state prüfen.
  */
-export async function hatLeadPerWhatsAppGeantwortet(telefon: string): Promise<boolean> {
+export async function hatLeadPerWhatsAppGeantwortet(telefon: string, kundeId?: string | null): Promise<boolean> {
   try {
-    const konfig = await integrationKonfigurationLesen('superchat');
+    const konfig = await integrationKonfigurationLesenMitFallback('superchat', kundeId);
     if (!konfig?.api_schluessel) return false;
 
     const basisUrl = konfig.basis_url || 'https://api.superchat.de';

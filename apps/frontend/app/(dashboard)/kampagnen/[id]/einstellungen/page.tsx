@@ -2,17 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Copy, Check } from 'lucide-react';
 import { benutzeKampagne } from '@/hooks/benutze-kampagnen';
 import { benutzeKampagneEinstellungenSpeichern } from '@/hooks/benutze-kampagne-einstellungen';
 import { benutzeTemplates } from '@/hooks/benutze-templates';
 import { KanalKonfiguration, type KanalKonfigurationWerte } from '@/components/kampagnen/kanal-konfiguration';
+import { useToastStore } from '@/stores/toast-store';
 
 const standardWerte: KanalKonfigurationWerte = {
   vapiAktiviert: false,
   vapiAssistantId: '',
   vapiPhoneNumberId: '',
   vapiPrompt: '',
+  vapiErsteBotschaft: '',
+  vapiVoicemailNachricht: '',
   maxAnrufVersuche: 11,
   emailAktiviert: true,
   emailTemplateVerpasst: '',
@@ -22,6 +25,7 @@ const standardWerte: KanalKonfigurationWerte = {
   whatsappKanalId: '',
   whatsappTemplateVerpasst: '',
   whatsappTemplateUnerreichbar: '',
+  whatsappTemplateNichtInteressiert: '',
   kiName: '',
   kiGeschlecht: '',
   kiSprachstil: 'freundlich',
@@ -35,8 +39,9 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
   const { data: templates } = benutzeTemplates();
   const speichern = benutzeKampagneEinstellungenSpeichern();
 
+  const { toastAnzeigen } = useToastStore();
   const [werte, setWerte] = useState<KanalKonfigurationWerte>(standardWerte);
-  const [erfolg, setErfolg] = useState('');
+  const [kopiert, setKopiert] = useState(false);
 
   useEffect(() => {
     if (kampagne) {
@@ -45,6 +50,8 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
         vapiAssistantId: kampagne.vapiAssistantId ?? '',
         vapiPhoneNumberId: kampagne.vapiPhoneNumberId ?? '',
         vapiPrompt: kampagne.vapiPrompt ?? '',
+        vapiErsteBotschaft: kampagne.vapiErsteBotschaft ?? '',
+        vapiVoicemailNachricht: kampagne.vapiVoicemailNachricht ?? '',
         maxAnrufVersuche: kampagne.maxAnrufVersuche ?? 11,
         emailAktiviert: kampagne.emailAktiviert ?? true,
         emailTemplateVerpasst: kampagne.emailTemplateVerpasst ?? '',
@@ -54,6 +61,7 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
         whatsappKanalId: kampagne.whatsappKanalId ?? '',
         whatsappTemplateVerpasst: kampagne.whatsappTemplateVerpasst ?? '',
         whatsappTemplateUnerreichbar: kampagne.whatsappTemplateUnerreichbar ?? '',
+        whatsappTemplateNichtInteressiert: kampagne.whatsappTemplateNichtInteressiert ?? '',
         kiName: kampagne.kiName ?? '',
         kiGeschlecht: kampagne.kiGeschlecht ?? '',
         kiSprachstil: kampagne.kiSprachstil ?? 'freundlich',
@@ -67,31 +75,53 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
     setWerte((prev) => ({ ...prev, [schluessel]: wert }));
   };
 
+  const triggerBezeichnungen: Record<string, string> = {
+    facebook_lead_ads: 'Facebook Lead Ads',
+    webhook: 'Webhook',
+    email: 'E-Mail',
+    whatsapp: 'WhatsApp',
+    webformular: 'Webformular',
+  };
+
+  const webhookUrl = kampagne?.webhookSlug
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook/${kampagne.webhookSlug}`
+    : null;
+
+  const webhookKopieren = async () => {
+    if (webhookUrl) {
+      await navigator.clipboard.writeText(webhookUrl);
+      setKopiert(true);
+      setTimeout(() => setKopiert(false), 2000);
+    }
+  };
+
   const handleSpeichern = async () => {
-    setErfolg('');
-    await speichern.mutateAsync({
-      id,
-      vapiAktiviert: werte.vapiAktiviert,
-      vapiAssistantId: werte.vapiAssistantId || null,
-      vapiPhoneNumberId: werte.vapiPhoneNumberId || null,
-      vapiPrompt: werte.vapiPrompt || null,
-      maxAnrufVersuche: werte.maxAnrufVersuche,
-      emailAktiviert: werte.emailAktiviert,
-      emailTemplateVerpasst: werte.emailTemplateVerpasst || null,
-      emailTemplateVoicemail: werte.emailTemplateVoicemail || null,
-      emailTemplateUnerreichbar: werte.emailTemplateUnerreichbar || null,
-      whatsappAktiviert: werte.whatsappAktiviert,
-      whatsappKanalId: werte.whatsappKanalId || null,
-      whatsappTemplateVerpasst: werte.whatsappTemplateVerpasst || null,
-      whatsappTemplateUnerreichbar: werte.whatsappTemplateUnerreichbar || null,
-      kiName: werte.kiName || null,
-      kiGeschlecht: werte.kiGeschlecht || null,
-      kiSprachstil: werte.kiSprachstil || null,
-      benachrichtigungEmail: werte.benachrichtigungEmail || null,
-      calendlyLink: werte.calendlyLink || null,
-    });
-    setErfolg('Einstellungen gespeichert');
-    setTimeout(() => setErfolg(''), 3000);
+    try {
+      await speichern.mutateAsync({
+        id,
+        vapiAktiviert: werte.vapiAktiviert,
+        vapiAssistantId: werte.vapiAssistantId || null,
+        vapiPhoneNumberId: werte.vapiPhoneNumberId || null,
+        vapiPrompt: werte.vapiPrompt || null,
+        maxAnrufVersuche: werte.maxAnrufVersuche,
+        emailAktiviert: werte.emailAktiviert,
+        emailTemplateVerpasst: werte.emailTemplateVerpasst || null,
+        emailTemplateVoicemail: werte.emailTemplateVoicemail || null,
+        emailTemplateUnerreichbar: werte.emailTemplateUnerreichbar || null,
+        whatsappAktiviert: werte.whatsappAktiviert,
+        whatsappKanalId: werte.whatsappKanalId || null,
+        whatsappTemplateVerpasst: werte.whatsappTemplateVerpasst || null,
+        whatsappTemplateUnerreichbar: werte.whatsappTemplateUnerreichbar || null,
+        kiName: werte.kiName || null,
+        kiGeschlecht: werte.kiGeschlecht || null,
+        kiSprachstil: werte.kiSprachstil || null,
+        benachrichtigungEmail: werte.benachrichtigungEmail || null,
+        calendlyLink: werte.calendlyLink || null,
+      });
+      toastAnzeigen('erfolg', 'Einstellungen gespeichert');
+    } catch {
+      toastAnzeigen('fehler', 'Fehler beim Speichern der Einstellungen');
+    }
   };
 
   return (
@@ -107,9 +137,33 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
         </div>
       </div>
 
-      {erfolg && (
-        <div className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-lg p-3 mb-4">
-          {erfolg}
+      {/* Trigger-Info */}
+      {kampagne && (
+        <div className="ax-karte rounded-xl p-5 mb-5">
+          <h3 className="text-sm font-semibold ax-titel mb-3">Trigger</h3>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+              {triggerBezeichnungen[kampagne.triggerTyp] || kampagne.triggerTyp}
+            </span>
+            <span className="text-xs ax-text-tertiaer">Kann nach Erstellung nicht geaendert werden</span>
+          </div>
+          {webhookUrl && (
+            <div className="mt-3">
+              <label className="text-xs font-medium ax-text-sekundaer mb-1 block">Webhook-URL</label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs ax-karte-erhoeht rounded-lg px-3 py-2 ax-text break-all select-all">
+                  {webhookUrl}
+                </code>
+                <button
+                  onClick={webhookKopieren}
+                  className="p-2 rounded-lg ax-hover ax-text-sekundaer transition-all flex-shrink-0"
+                  title="Kopieren"
+                >
+                  {kopiert ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

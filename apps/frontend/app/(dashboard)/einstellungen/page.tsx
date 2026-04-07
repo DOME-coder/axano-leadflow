@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Settings, Plug, Users, User } from 'lucide-react';
 
 const tabs = [
-  { bezeichnung: 'Integrationen', pfad: '/einstellungen/integrationen', icon: Plug },
+  { bezeichnung: 'KI-Konfiguration', pfad: '/einstellungen/integrationen', icon: Plug },
   { bezeichnung: 'Benutzer', pfad: '/einstellungen/benutzer', icon: Users },
   { bezeichnung: 'Profil', pfad: '/einstellungen/profil', icon: User },
 ];

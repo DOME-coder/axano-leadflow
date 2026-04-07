@@ -14,12 +14,15 @@ const statusIcons: Record<string, typeof Clock> = {
 };
 
 const ergebnisAnzeige: Record<string, { farbe: string; text: string }> = {
-  interessiert: { farbe: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', text: 'Interessiert' },
+  interessiert: { farbe: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', text: 'Termin gebucht' },
+  rueckruf_geplant: { farbe: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', text: 'Rückruf gewünscht' },
   nicht_interessiert: { farbe: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', text: 'Nicht interessiert' },
   voicemail: { farbe: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', text: 'Voicemail' },
   falsche_nummer: { farbe: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400', text: 'Falsche Nummer' },
   nicht_abgenommen: { farbe: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', text: 'Nicht abgenommen' },
   aufgelegt: { farbe: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', text: 'Aufgelegt' },
+  hung_up: { farbe: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', text: 'Aufgelegt' },
+  disconnected: { farbe: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400', text: 'Verbindung unterbrochen' },
 };
 
 export default function AnrufeSeite({ params }: { params: { id: string } }) {
@@ -68,9 +71,9 @@ export default function AnrufeSeite({ params }: { params: { id: string } }) {
             </p>
           </div>
           <div className="ax-karte rounded-xl p-4">
-            <p className="text-xs ax-text-sekundaer uppercase">Interessiert</p>
+            <p className="text-xs ax-text-sekundaer uppercase">Interesse / Rückruf</p>
             <p className="text-2xl font-bold text-green-500">
-              {anrufeData.eintraege.filter((a) => a.ergebnis === 'interessiert').length}
+              {anrufeData.eintraege.filter((a) => a.ergebnis === 'interessiert' || a.ergebnis === 'rueckruf_geplant').length}
             </p>
           </div>
           <div className="ax-karte rounded-xl p-4">
@@ -137,9 +140,21 @@ export default function AnrufeSeite({ params }: { params: { id: string } }) {
                     </td>
                     <td className="px-4 py-3">
                       {ergebnis ? (
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ergebnis.farbe}`}>
-                          {ergebnis.text}
-                        </span>
+                        <div>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ergebnis.farbe}`}>
+                            {ergebnis.text}
+                          </span>
+                          {anruf.gptAnalyse && (() => {
+                            try {
+                              const analyse = JSON.parse(anruf.gptAnalyse);
+                              return analyse.summary ? (
+                                <p className="text-xs ax-text-sekundaer mt-1 max-w-xs truncate" title={analyse.summary}>
+                                  {analyse.summary}
+                                </p>
+                              ) : null;
+                            } catch { return null; }
+                          })()}
+                        </div>
                       ) : (
                         <span className="text-xs ax-text-tertiaer">–</span>
                       )}
@@ -178,9 +193,19 @@ export default function AnrufeSeite({ params }: { params: { id: string } }) {
           <h3 className="font-semibold ax-titel text-sm mb-2">
             Transkript – {[transkriptAnruf.lead.vorname, transkriptAnruf.lead.nachname].filter(Boolean).join(' ')} (Versuch #{transkriptAnruf.versuchNummer})
           </h3>
-          <p className="text-xs ax-text-sekundaer mb-2">
-            GPT-Analyse: <span className="font-semibold">{transkriptAnruf.gptAnalyse || '–'}</span>
-          </p>
+          {transkriptAnruf.gptAnalyse && (() => {
+            try {
+              const analyse = JSON.parse(transkriptAnruf.gptAnalyse);
+              return (
+                <div className="text-xs ax-text-sekundaer mb-3 space-y-1">
+                  <p><span className="font-semibold">Verdict:</span> {analyse.verdict || '–'}</p>
+                  <p><span className="font-semibold">Zusammenfassung:</span> {analyse.summary || '–'}</p>
+                </div>
+              );
+            } catch {
+              return <p className="text-xs ax-text-sekundaer mb-2">Analyse: {transkriptAnruf.gptAnalyse}</p>;
+            }
+          })()}
           <pre className="text-sm ax-text whitespace-pre-wrap ax-karte-erhoeht rounded-lg p-4 max-h-64 overflow-y-auto">
             {transkriptAnruf.transkript}
           </pre>

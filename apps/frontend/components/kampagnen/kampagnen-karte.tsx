@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, Copy, Trash2 } from 'lucide-react';
 import type { Kampagne, IntegrationStatus } from '@/lib/typen';
 import { quellenFarben } from '@/lib/typen';
+import { benutzeKampagneDuplizieren, benutzeKampagneLoeschen } from '@/hooks/benutze-kampagnen';
 
 const statusAnzeige: Record<string, { farbe: string; text: string }> = {
   aktiv: { farbe: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', text: 'Aktiv' },
@@ -46,6 +47,23 @@ export function KampagnenKarte({ kampagne, integrationsStatus }: KampagnenKarteP
   const status = statusAnzeige[kampagne.status] || statusAnzeige.aktiv;
   const quellenFarbe = quellenFarben[kampagne.triggerTyp] || 'bg-gray-100 text-gray-700';
   const ampel = kampagneAmpel(kampagne, integrationsStatus);
+  const duplizieren = benutzeKampagneDuplizieren();
+  const loeschen = benutzeKampagneLoeschen();
+
+  const duplizierenKlick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (duplizieren.isPending) return;
+    duplizieren.mutate(kampagne.id);
+  };
+
+  const loeschenKlick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (loeschen.isPending) return;
+    if (!confirm(`Kampagne "${kampagne.name}" wirklich löschen? Sie kann im Papierkorb wiederhergestellt werden.`)) return;
+    loeschen.mutate(kampagne.id);
+  };
 
   return (
     <Link href={`/kampagnen/${kampagne.id}/leads`}
@@ -57,7 +75,25 @@ export function KampagnenKarte({ kampagne, integrationsStatus }: KampagnenKarteP
             {kampagne.name}
           </h3>
         </div>
-        <ArrowUpRight className="w-4 h-4 ax-text-tertiaer group-hover:text-axano-orange transition-colors flex-shrink-0 ml-2" />
+        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+          <button
+            onClick={duplizierenKlick}
+            disabled={duplizieren.isPending}
+            className="p-1.5 rounded-lg ax-text-tertiaer hover:text-axano-orange hover:bg-axano-orange/10 transition-all opacity-0 group-hover:opacity-100"
+            title="Kampagne duplizieren"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={loeschenKlick}
+            disabled={loeschen.isPending}
+            className="p-1.5 rounded-lg ax-text-tertiaer hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all opacity-0 group-hover:opacity-100"
+            title="Kampagne löschen"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <ArrowUpRight className="w-4 h-4 ax-text-tertiaer group-hover:text-axano-orange transition-colors" />
+        </div>
       </div>
 
       {kampagne.beschreibung && (

@@ -4,10 +4,23 @@ interface UiZustand {
   darkMode: boolean;
   darkModeUmschalten: () => void;
   darkModeInitialisieren: () => void;
+  ausgewaehlterKundeId: string | null;
+  kundeSetzen: (kundeId: string | null) => void;
 }
 
 export const useUiStore = create<UiZustand>((set) => ({
   darkMode: false,
+  ausgewaehlterKundeId: typeof window !== 'undefined' ? localStorage.getItem('axano-kunde-filter') : null,
+  kundeSetzen: (kundeId) => {
+    if (typeof window !== 'undefined') {
+      if (kundeId) {
+        localStorage.setItem('axano-kunde-filter', kundeId);
+      } else {
+        localStorage.removeItem('axano-kunde-filter');
+      }
+    }
+    set({ ausgewaehlterKundeId: kundeId });
+  },
   darkModeUmschalten: () => {
     set((state) => {
       const neuerWert = !state.darkMode;

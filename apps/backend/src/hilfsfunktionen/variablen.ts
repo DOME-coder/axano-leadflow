@@ -5,7 +5,7 @@ interface LeadFuerVariablen {
   telefon?: string | null;
   status: string;
   erstelltAm: Date;
-  kampagne?: { name: string } | null;
+  kampagne?: { name: string; calendlyLink?: string | null } | null;
   zugewiesener?: { vorname: string; nachname?: string } | null;
   felddaten?: Array<{
     feld: { feldname: string };
@@ -24,6 +24,7 @@ export function variablenAufloesen(vorlage: string, lead: LeadFuerVariablen): st
     telefon: lead.telefon ?? '',
     status: lead.status,
     kampagne_name: lead.kampagne?.name ?? '',
+    calendly_link: lead.kampagne?.calendlyLink ?? '',
     erstellt_am: lead.erstelltAm.toLocaleDateString('de-DE'),
     zugewiesen_an: lead.zugewiesener
       ? `${lead.zugewiesener.vorname} ${lead.zugewiesener.nachname ?? ''}`.trim()

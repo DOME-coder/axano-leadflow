@@ -3,17 +3,43 @@
 import { KanbanBoard } from '@/components/leads/kanban-board';
 import { benutzeKampagne } from '@/hooks/benutze-kampagnen';
 import { benutzeEchtzeit } from '@/hooks/benutze-echtzeit';
-import { ArrowLeft, Copy, Check, Settings, Phone, LayoutGrid } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Settings, Phone, LayoutGrid, Download, Trash2, RotateCcw } from 'lucide-react';
+import { apiClient } from '@/lib/api-client';
+import { benutzeLeads } from '@/hooks/benutze-leads';
 import Link from 'next/link';
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function KampagneLeadsSeite({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data: kampagne, isLoading } = benutzeKampagne(id);
   const [kopiert, setKopiert] = useState(false);
+  const [papierkorbAktiv, setPapierkorbAktiv] = useState(false);
+  const [exportLaeuft, setExportLaeuft] = useState(false);
 
   // Echtzeit-Updates für diese Kampagne
   benutzeEchtzeit(id);
+
+  const csvExportieren = async () => {
+    setExportLaeuft(true);
+    try {
+      const antwort = await apiClient.get(`/kampagnen/${id}/leads/export`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([antwort.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `leads-${kampagne?.name || id}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Export fehlgeschlagen');
+    } finally {
+      setExportLaeuft(false);
+    }
+  };
 
   const webhookUrl = kampagne?.webhookSlug
     ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'}/webhooks/${kampagne.webhookSlug}`
@@ -71,6 +97,25 @@ export default function KampagneLeadsSeite({ params }: { params: { id: string } 
               <span className="max-w-[200px] truncate">{webhookUrl}</span>
             </button>
           )}
+          <button
+            onClick={csvExportieren}
+            disabled={exportLaeuft}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium ax-text-sekundaer ax-hover transition-all disabled:opacity-50"
+            title="Leads als CSV exportieren"
+          >
+            <Download className="w-3.5 h-3.5" /> {exportLaeuft ? 'Exportiert...' : 'CSV Export'}
+          </button>
+          <button
+            onClick={() => setPapierkorbAktiv(!papierkorbAktiv)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              papierkorbAktiv
+                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                : 'ax-text-sekundaer ax-hover'
+            }`}
+            title="Gelöschte Leads anzeigen"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Papierkorb
+          </button>
           <Link
             href={`/kampagnen/${id}/anrufe`}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium ax-text-sekundaer ax-hover transition-all"
@@ -87,8 +132,70 @@ export default function KampagneLeadsSeite({ params }: { params: { id: string } 
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <KanbanBoard kampagneId={id} />
+        {papierkorbAktiv ? (
+          <PapierkorbAnsicht kampagneId={id} />
+        ) : (
+          <KanbanBoard kampagneId={id} />
+        )}
       </div>
     </div>
   );
 }
+
+function PapierkorbAnsicht({ kampagneId }: { kampagneId: string }) {
+  const { data, isLoading } = benutzeLeads(kampagneId, { status: 'geloescht' });
+  const queryClient = useQueryClient();
+
+  const wiederherstellen = async (leadId: string) => {
+    await apiClient.patch(`/leads/${leadId}`, { geloescht: false });
+    queryClient.invalidateQueries({ queryKey: ['leads'] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3 p-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="skeleton h-16 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!data?.eintraege.length) {
+    return (
+      <div className="ax-karte rounded-xl p-12 text-center mt-4">
+        <Trash2 className="w-12 h-12 ax-text-tertiaer mx-auto mb-3" />
+        <h3 className="text-lg font-semibold ax-titel mb-1">Papierkorb ist leer</h3>
+        <p className="text-sm ax-text-sekundaer">Keine gelöschten Leads vorhanden.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 overflow-y-auto mt-2" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+      {data.eintraege.map((lead) => (
+        <div key={lead.id} className="ax-karte rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold ax-titel">
+              {lead.vorname} {lead.nachname}
+            </p>
+            <p className="text-xs ax-text-sekundaer">
+              {lead.email || lead.telefon || 'Keine Kontaktdaten'}
+            </p>
+            <p className="text-xs ax-text-tertiaer mt-0.5">
+              Status: {lead.status} · {new Date(lead.erstelltAm).toLocaleDateString('de-DE')}
+            </p>
+          </div>
+          <button
+            onClick={() => wiederherstellen(lead.id)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-all"
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Wiederherstellen
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+

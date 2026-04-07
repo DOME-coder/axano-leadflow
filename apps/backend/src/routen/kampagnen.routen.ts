@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { prisma } from '../datenbank/prisma.client';
 import { authentifizierung } from '../middleware/authentifizierung';
 import {
   kampagnenAuflisten,
@@ -24,6 +25,8 @@ const kampagneErstellenSchema = z.object({
   vapiAssistantId: z.string().optional().nullable(),
   vapiPhoneNumberId: z.string().optional().nullable(),
   vapiPrompt: z.string().optional().nullable(),
+  vapiErsteBotschaft: z.string().optional().nullable(),
+  vapiVoicemailNachricht: z.string().optional().nullable(),
   maxAnrufVersuche: z.number().int().min(1).max(20).optional(),
   anrufZeitslots: z.array(z.object({ stunde: z.number(), minute: z.number() })).optional(),
   emailAktiviert: z.boolean().optional(),
@@ -42,6 +45,7 @@ const kampagneErstellenSchema = z.object({
   emailTemplateUnerreichbar: z.string().optional().nullable(),
   whatsappTemplateVerpasst: z.string().optional().nullable(),
   whatsappTemplateUnerreichbar: z.string().optional().nullable(),
+  whatsappTemplateNichtInteressiert: z.string().optional().nullable(),
   whatsappKanalId: z.string().optional().nullable(),
   kundeId: z.string().optional().nullable(),
   felder: z.array(z.object({
@@ -66,6 +70,8 @@ const kampagneAktualisierenSchema = z.object({
   vapiAssistantId: z.string().optional().nullable(),
   vapiPhoneNumberId: z.string().optional().nullable(),
   vapiPrompt: z.string().optional().nullable(),
+  vapiErsteBotschaft: z.string().optional().nullable(),
+  vapiVoicemailNachricht: z.string().optional().nullable(),
   maxAnrufVersuche: z.number().int().min(1).max(20).optional(),
   anrufZeitslots: z.array(z.object({ stunde: z.number(), minute: z.number() })).optional(),
   emailAktiviert: z.boolean().optional(),
@@ -84,6 +90,7 @@ const kampagneAktualisierenSchema = z.object({
   emailTemplateUnerreichbar: z.string().optional().nullable(),
   whatsappTemplateVerpasst: z.string().optional().nullable(),
   whatsappTemplateUnerreichbar: z.string().optional().nullable(),
+  whatsappTemplateNichtInteressiert: z.string().optional().nullable(),
   whatsappKanalId: z.string().optional().nullable(),
   kundeId: z.string().optional().nullable(),
 });
@@ -91,8 +98,20 @@ const kampagneAktualisierenSchema = z.object({
 // GET /api/v1/kampagnen
 kampagnenRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Papierkorb: gelöschte Kampagnen anzeigen
+    if (req.query.papierkorb === 'true') {
+      const geloeschte = await prisma.kampagne.findMany({
+        where: { geloescht: true },
+        include: { _count: { select: { leads: true } } },
+        orderBy: { geloeschtAm: 'desc' },
+      });
+      res.json({ erfolg: true, daten: { eintraege: geloeschte } });
+      return;
+    }
+
     const ergebnis = await kampagnenAuflisten({
       status: typeof req.query.status === 'string' ? req.query.status : undefined,
+      kundeId: typeof req.query.kunde_id === 'string' ? req.query.kunde_id : undefined,
       seite: typeof req.query.seite === 'string' ? parseInt(req.query.seite) : undefined,
       proSeite: typeof req.query.pro_seite === 'string' ? parseInt(req.query.pro_seite) : undefined,
     });
@@ -132,6 +151,7 @@ const kiGenerierungSchema = z.object({
   kiName: z.string().optional(),
   kiGeschlecht: z.string().optional(),
   kiSprachstil: z.string().optional(),
+  zusatzFelder: z.array(z.string()).optional(),
 });
 
 kampagnenRouter.post('/ki-generieren', async (req: Request, res: Response, next: NextFunction) => {
@@ -169,11 +189,37 @@ kampagnenRouter.patch('/:id', async (req: Request, res: Response, next: NextFunc
   }
 });
 
-// DELETE /api/v1/kampagnen/:id (archivieren)
+// DELETE /api/v1/kampagnen/:id (Soft Delete → Papierkorb)
 kampagnenRouter.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const kampagne = await kampagneAktualisieren(req.params.id, { status: 'archiviert' });
+    const kampagne = await prisma.kampagne.update({
+      where: { id: req.params.id },
+      data: { geloescht: true, geloeschtAm: new Date(), status: 'archiviert' },
+    });
     res.json({ erfolg: true, daten: kampagne });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// POST /api/v1/kampagnen/:id/wiederherstellen
+kampagnenRouter.post('/:id/wiederherstellen', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const kampagne = await prisma.kampagne.update({
+      where: { id: req.params.id },
+      data: { geloescht: false, geloeschtAm: null, status: 'pausiert' },
+    });
+    res.json({ erfolg: true, daten: kampagne });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// DELETE /api/v1/kampagnen/:id/endgueltig (endgültig löschen)
+kampagnenRouter.delete('/:id/endgueltig', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.kampagne.delete({ where: { id: req.params.id } });
+    res.json({ erfolg: true, nachricht: 'Kampagne endgültig gelöscht.' });
   } catch (fehler) {
     next(fehler);
   }

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, ArrowDown } from 'lucide-react';
 import { benutzeAutomatisierungErstellen } from '@/hooks/benutze-automatisierungen';
+import { useToastStore } from '@/stores/toast-store';
 
 interface EditorProps {
   kampagneId: string;
@@ -12,6 +13,8 @@ interface EditorProps {
 const triggerOptionen = [
   { wert: 'lead_eingetroffen', bezeichnung: 'Lead eingetroffen', beschreibung: 'Wenn ein neuer Lead erstellt wird' },
   { wert: 'status_geaendert', bezeichnung: 'Status geändert', beschreibung: 'Wenn der Lead-Status sich ändert' },
+  { wert: 'inaktivitaet', bezeichnung: 'Inaktivität (X Tage)', beschreibung: 'Wenn ein Lead X Tage inaktiv ist' },
+  { wert: 'zeitplan', bezeichnung: 'Zeitplan', beschreibung: 'Zu festgelegten Zeiten ausführen' },
 ];
 
 const aktionOptionen = [
@@ -28,8 +31,19 @@ interface SchrittDaten {
   konfiguration: Record<string, unknown>;
 }
 
+const wochentagOptionen = [
+  { wert: 1, bezeichnung: 'Mo' },
+  { wert: 2, bezeichnung: 'Di' },
+  { wert: 3, bezeichnung: 'Mi' },
+  { wert: 4, bezeichnung: 'Do' },
+  { wert: 5, bezeichnung: 'Fr' },
+  { wert: 6, bezeichnung: 'Sa' },
+  { wert: 0, bezeichnung: 'So' },
+];
+
 export function AutomatisierungsEditor({ kampagneId, onSchliessen }: EditorProps) {
   const erstellen = benutzeAutomatisierungErstellen();
+  const { toastAnzeigen } = useToastStore();
   const [name, setName] = useState('');
   const [beschreibung, setBeschreibung] = useState('');
   const [triggerTyp, setTriggerTyp] = useState('lead_eingetroffen');
@@ -75,9 +89,11 @@ export function AutomatisierungsEditor({ kampagneId, onSchliessen }: EditorProps
           konfiguration: s.konfiguration,
         })),
       });
+      toastAnzeigen('erfolg', 'Automatisierung erstellt');
       onSchliessen();
     } catch {
       setFehler('Fehler beim Erstellen der Automatisierung');
+      toastAnzeigen('fehler', 'Fehler beim Erstellen der Automatisierung');
     }
   };
 
@@ -157,6 +173,63 @@ export function AutomatisierungsEditor({ kampagneId, onSchliessen }: EditorProps
             </div>
           )}
 
+          {/* Trigger-Konfiguration für inaktivitaet */}
+          {triggerTyp === 'inaktivitaet' && (
+            <div className="ax-karte-erhoeht rounded-lg p-3 space-y-2">
+              <label className="text-xs font-medium ax-text">Tage ohne Aktivität</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={(triggerKonfiguration.tage as number) || 3}
+                  onChange={(e) => setTriggerKonfiguration({ ...triggerKonfiguration, tage: parseInt(e.target.value) || 3 })}
+                  className="w-24 px-3 py-2 text-sm rounded-lg ax-eingabe"
+                  min={1}
+                />
+                <span className="text-sm ax-text-sekundaer">Tage</span>
+              </div>
+            </div>
+          )}
+
+          {/* Trigger-Konfiguration für zeitplan */}
+          {triggerTyp === 'zeitplan' && (
+            <div className="ax-karte-erhoeht rounded-lg p-3 space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium ax-text">Wochentage</label>
+                <div className="flex flex-wrap gap-2">
+                  {wochentagOptionen.map((tag) => {
+                    const aktuelleWochentage = (triggerKonfiguration.wochentage as number[]) || [1, 2, 3, 4, 5];
+                    const ausgewaehlt = aktuelleWochentage.includes(tag.wert);
+                    return (
+                      <label key={tag.wert} className="flex items-center gap-1.5 text-xs ax-text cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={ausgewaehlt}
+                          onChange={(e) => {
+                            const neueWochentage = e.target.checked
+                              ? [...aktuelleWochentage, tag.wert]
+                              : aktuelleWochentage.filter((w) => w !== tag.wert);
+                            setTriggerKonfiguration({ ...triggerKonfiguration, wochentage: neueWochentage });
+                          }}
+                          className="rounded border-axano-sky-blue"
+                        />
+                        {tag.bezeichnung}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium ax-text">Uhrzeit</label>
+                <input
+                  type="time"
+                  value={(triggerKonfiguration.uhrzeit as string) || '09:00'}
+                  onChange={(e) => setTriggerKonfiguration({ ...triggerKonfiguration, uhrzeit: e.target.value })}
+                  className="w-full px-3 py-2 text-sm rounded-lg ax-eingabe"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Schritte */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium ax-text">Schritte</label>
@@ -230,6 +303,26 @@ export function AutomatisierungsEditor({ kampagneId, onSchliessen }: EditorProps
                       onChange={(e) => schrittAktualisieren(index, { konfiguration: { ...schritt.konfiguration, templateId: e.target.value } })}
                       className="w-full px-3 py-2 text-sm rounded-lg ax-eingabe"
                       placeholder="Template-ID (aus Template-Verwaltung)"
+                    />
+                  )}
+
+                  {schritt.aktionTyp === 'whatsapp_senden' && (
+                    <input
+                      type="text"
+                      value={(schritt.konfiguration.whatsappTemplateId as string) || ''}
+                      onChange={(e) => schrittAktualisieren(index, { konfiguration: { ...schritt.konfiguration, whatsappTemplateId: e.target.value } })}
+                      className="w-full px-3 py-2 text-sm rounded-lg ax-eingabe"
+                      placeholder="WhatsApp Template-ID"
+                    />
+                  )}
+
+                  {schritt.aktionTyp === 'benachrichtigung' && (
+                    <input
+                      type="email"
+                      value={(schritt.konfiguration.email as string) || ''}
+                      onChange={(e) => schrittAktualisieren(index, { konfiguration: { ...schritt.konfiguration, email: e.target.value } })}
+                      className="w-full px-3 py-2 text-sm rounded-lg ax-eingabe"
+                      placeholder="Benachrichtigungs-E-Mail-Adresse"
                     />
                   )}
                 </div>

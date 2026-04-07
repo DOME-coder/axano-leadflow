@@ -13,6 +13,8 @@ interface KampagneErstellen {
   vapiAssistantId?: string | null;
   vapiPhoneNumberId?: string | null;
   vapiPrompt?: string | null;
+  vapiErsteBotschaft?: string | null;
+  vapiVoicemailNachricht?: string | null;
   maxAnrufVersuche?: number;
   anrufZeitslots?: Prisma.InputJsonValue;
   emailAktiviert?: boolean;
@@ -31,6 +33,7 @@ interface KampagneErstellen {
   emailTemplateUnerreichbar?: string | null;
   whatsappTemplateVerpasst?: string | null;
   whatsappTemplateUnerreichbar?: string | null;
+  whatsappTemplateNichtInteressiert?: string | null;
   whatsappKanalId?: string | null;
   kundeId?: string | null;
   erstelltVon?: string;
@@ -58,6 +61,7 @@ function webhookSlugErstellen(name: string): string {
 
 export async function kampagnenAuflisten(filter: {
   status?: string;
+  kundeId?: string;
   seite?: number;
   proSeite?: number;
 }) {
@@ -65,9 +69,12 @@ export async function kampagnenAuflisten(filter: {
   const proSeite = filter.proSeite || 20;
   const skip = (seite - 1) * proSeite;
 
-  const where: Prisma.KampagneWhereInput = {};
+  const where: Prisma.KampagneWhereInput = { geloescht: false };
   if (filter.status) {
     where.status = filter.status as 'aktiv' | 'pausiert' | 'archiviert';
+  }
+  if (filter.kundeId) {
+    where.kundeId = filter.kundeId;
   }
 
   const [eintraege, gesamt] = await Promise.all([
@@ -148,6 +155,8 @@ export async function kampagneErstellen(daten: KampagneErstellen) {
       vapiAssistantId: daten.vapiAssistantId,
       vapiPhoneNumberId: daten.vapiPhoneNumberId,
       vapiPrompt: daten.vapiPrompt,
+      vapiErsteBotschaft: daten.vapiErsteBotschaft,
+      vapiVoicemailNachricht: daten.vapiVoicemailNachricht,
       maxAnrufVersuche: daten.maxAnrufVersuche,
       anrufZeitslots: daten.anrufZeitslots ?? undefined,
       emailAktiviert: daten.emailAktiviert,
@@ -166,6 +175,7 @@ export async function kampagneErstellen(daten: KampagneErstellen) {
       emailTemplateUnerreichbar: daten.emailTemplateUnerreichbar,
       whatsappTemplateVerpasst: daten.whatsappTemplateVerpasst,
       whatsappTemplateUnerreichbar: daten.whatsappTemplateUnerreichbar,
+      whatsappTemplateNichtInteressiert: daten.whatsappTemplateNichtInteressiert,
       whatsappKanalId: daten.whatsappKanalId,
       kundeId: daten.kundeId,
       erstelltVon: daten.erstelltVon,

@@ -46,6 +46,9 @@ model Kampagne {
   vapiAssistantId       String?         @map("vapi_assistant_id")
   vapiPhoneNumberId     String?         @map("vapi_phone_number_id")
   vapiPrompt            String?         @map("vapi_prompt") @db.Text
+  vapiErsteBotschaft    String?         @map("vapi_erste_botschaft") @db.Text
+  vapiVoicemailNachricht String?        @map("vapi_voicemail_nachricht") @db.Text
+  vapiVoiceId           String?         @map("vapi_voice_id")
   maxAnrufVersuche      Int             @default(11) @map("max_anruf_versuche")
   anrufZeitslots        Json            @default("[{\"stunde\":9,\"minute\":0},{\"stunde\":12,\"minute\":30},{\"stunde\":17,\"minute\":0},{\"stunde\":18,\"minute\":0},{\"stunde\":19,\"minute\":0}]") @map("anruf_zeitslots")
   emailAktiviert        Boolean         @default(true) @map("email_aktiviert")
@@ -64,7 +67,10 @@ model Kampagne {
   emailTemplateUnerreichbar String?    @map("email_template_unerreichbar")
   whatsappTemplateVerpasst  String?    @map("whatsapp_template_verpasst")
   whatsappTemplateUnerreichbar String? @map("whatsapp_template_unerreichbar")
+  whatsappTemplateNichtInteressiert String? @map("whatsapp_template_nicht_interessiert")
   whatsappKanalId           String?    @map("whatsapp_kanal_id")
+  geloescht            Boolean         @default(false)
+  geloeschtAm          DateTime?       @map("geloescht_am")
   erstelltVon          String?         @map("erstellt_von")
   ersteller            Benutzer?       @relation(fields: [erstelltVon], references: [id])
   kundeId              String?         @map("kunde_id")
@@ -91,9 +97,25 @@ model Kunde {
   erstelltAm      DateTime  @default(now()) @map("erstellt_am")
   aktualisiertAm  DateTime  @updatedAt @map("aktualisiert_am")
 
-  kampagnen Kampagne[]
+  kampagnen     Kampagne[]
+  integrationen KundenIntegration[]
 
   @@map("kunden")
+}
+
+model KundenIntegration {
+  id             String   @id @default(uuid())
+  kundeId        String   @map("kunde_id")
+  kunde          Kunde    @relation(fields: [kundeId], references: [id], onDelete: Cascade)
+  name           String
+  typ            String
+  konfiguration  Json     @default("{}")
+  aktiv          Boolean  @default(false)
+  erstelltAm     DateTime @default(now()) @map("erstellt_am")
+  aktualisiertAm DateTime @updatedAt @map("aktualisiert_am")
+
+  @@unique([kundeId, name])
+  @@map("kunden_integrationen")
 }
 
 enum KampagnenStatus {
@@ -400,6 +422,7 @@ enum AnrufStatus {
 
 enum AnrufErgebnis {
   interessiert
+  rueckruf_geplant
   nicht_interessiert
   voicemail
   falsche_nummer

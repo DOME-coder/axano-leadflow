@@ -12,10 +12,7 @@ export default function DashboardSeite() {
   const { data: integrationsStatus } = benutzeIntegrationsStatus();
 
   const kritischeIntegrationen = [
-    { name: 'vapi', warnung: 'VAPI nicht konfiguriert — KI-Anrufe deaktiviert' },
-    { name: 'smtp', warnung: 'SMTP fehlt — E-Mail-Versand nicht möglich' },
-    { name: 'openai', warnung: 'OpenAI nicht konfiguriert — Transkript-Analyse deaktiviert' },
-    { name: 'superchat', warnung: 'Superchat fehlt — WhatsApp-Versand nicht möglich' },
+    { name: 'anthropic', warnung: 'Anthropic (Claude) nicht konfiguriert — KI-Generierung und Transkript-Analyse deaktiviert' },
   ];
 
   const fehlendeIntegrationen = kritischeIntegrationen.filter((ki) => {

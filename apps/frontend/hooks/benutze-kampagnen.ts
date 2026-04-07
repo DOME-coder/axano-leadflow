@@ -3,13 +3,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { Kampagne, PaginierteAntwort, KiGenerierungErgebnis } from '@/lib/typen';
+import { useUiStore } from '@/stores/ui-store';
 
 export function benutzeKampagnen(filter?: { status?: string }) {
+  const kundeId = useUiStore((s) => s.ausgewaehlterKundeId);
   return useQuery({
-    queryKey: ['kampagnen', filter],
+    queryKey: ['kampagnen', filter, kundeId],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filter?.status) params.set('status', filter.status);
+      if (kundeId) params.set('kunde_id', kundeId);
       const { data } = await apiClient.get(`/kampagnen?${params}`);
       return data.daten as PaginierteAntwort<Kampagne>;
     },
@@ -40,6 +43,8 @@ export function benutzeKampagneErstellen() {
       vapiAssistantId?: string | null;
       vapiPhoneNumberId?: string | null;
       vapiPrompt?: string | null;
+      vapiErsteBotschaft?: string | null;
+      vapiVoicemailNachricht?: string | null;
       maxAnrufVersuche?: number;
       emailAktiviert?: boolean;
       emailTemplateVerpasst?: string | null;
@@ -49,6 +54,7 @@ export function benutzeKampagneErstellen() {
       whatsappKanalId?: string | null;
       whatsappTemplateVerpasst?: string | null;
       whatsappTemplateUnerreichbar?: string | null;
+      whatsappTemplateNichtInteressiert?: string | null;
       benachrichtigungEmail?: string | null;
       calendlyLink?: string | null;
       branche?: string | null;
@@ -89,6 +95,58 @@ export function benutzeKampagneAktualisieren() {
   });
 }
 
+export function benutzeKampagneDuplizieren() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.post(`/kampagnen/${id}/duplizieren`);
+      return data.daten as Kampagne;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kampagnen'] });
+    },
+  });
+}
+
+export function benutzeKampagneLoeschen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete(`/kampagnen/${id}`);
+      return data.daten;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kampagnen'] });
+    },
+  });
+}
+
+export function benutzeKampagneWiederherstellen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.post(`/kampagnen/${id}/wiederherstellen`);
+      return data.daten;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kampagnen'] });
+    },
+  });
+}
+
+export function benutzeKampagneEndgueltigLoeschen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await apiClient.delete(`/kampagnen/${id}/endgueltig`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kampagnen'] });
+    },
+  });
+}
+
 export function benutzeKiGenerierung() {
   return useMutation({
     mutationFn: async (daten: {
@@ -99,6 +157,7 @@ export function benutzeKiGenerierung() {
       kiName?: string;
       kiGeschlecht?: string;
       kiSprachstil?: string;
+      zusatzFelder?: string[];
     }) => {
       const { data } = await apiClient.post('/kampagnen/ki-generieren', daten);
       return data.daten as KiGenerierungErgebnis;

@@ -16,19 +16,22 @@ function zeitraumBerechnen(zeitraum: string): Date {
   }
 }
 
-export async function plattformUebersicht() {
+export async function plattformUebersicht(kundeId?: string) {
   const jetzt = new Date();
   const heuteStart = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate());
   const wocheStart = new Date(jetzt.getTime() - 7 * 24 * 60 * 60 * 1000);
   const monatStart = new Date(jetzt.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+  // Kunden-Filter: Leads nur aus Kampagnen des Kunden
+  const kampagneFilter = kundeId ? { kampagne: { kundeId } } : {};
+
   const [gesamtLeads, leadsHeute, leadsDieseWoche, leadsMonat, aktiveKampagnen, termineGebucht] = await Promise.all([
-    prisma.lead.count({ where: { geloescht: false } }),
-    prisma.lead.count({ where: { geloescht: false, erstelltAm: { gte: heuteStart } } }),
-    prisma.lead.count({ where: { geloescht: false, erstelltAm: { gte: wocheStart } } }),
-    prisma.lead.count({ where: { geloescht: false, erstelltAm: { gte: monatStart } } }),
-    prisma.kampagne.count({ where: { status: 'aktiv' } }),
-    prisma.lead.count({ where: { geloescht: false, status: 'Termin gebucht' } }),
+    prisma.lead.count({ where: { geloescht: false, ...kampagneFilter } }),
+    prisma.lead.count({ where: { geloescht: false, erstelltAm: { gte: heuteStart }, ...kampagneFilter } }),
+    prisma.lead.count({ where: { geloescht: false, erstelltAm: { gte: wocheStart }, ...kampagneFilter } }),
+    prisma.lead.count({ where: { geloescht: false, erstelltAm: { gte: monatStart }, ...kampagneFilter } }),
+    prisma.kampagne.count({ where: { status: 'aktiv', geloescht: false, ...(kundeId ? { kundeId } : {}) } }),
+    prisma.lead.count({ where: { geloescht: false, status: 'Termin gebucht', ...kampagneFilter } }),
   ]);
 
   const conversionRateGesamt = gesamtLeads > 0

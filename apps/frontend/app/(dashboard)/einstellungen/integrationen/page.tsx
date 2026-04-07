@@ -98,14 +98,15 @@ export default function IntegrationenSeite() {
   return (
     <div className="animate-einblenden">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold ax-titel">Integrationen</h1>
+        <h1 className="text-2xl font-bold ax-titel">KI-Konfiguration</h1>
         <p className="text-sm ax-text-sekundaer mt-1">
-          Konfigurieren Sie externe Dienste und API-Verbindungen
+          API-Keys für die interne KI-Verarbeitung (Prompt-Generierung und Transkript-Analyse).
+          Alle anderen Integrationen (VAPI, E-Mail, WhatsApp, Kalender) werden pro Kunde konfiguriert.
         </p>
       </div>
 
       <div className="space-y-3">
-        {integrationen?.map((integration) => (
+        {integrationen?.filter((i) => ['anthropic'].includes(i.name)).map((integration) => (
           <div
             key={integration.name}
             className="ax-karte rounded-xl overflow-hidden"

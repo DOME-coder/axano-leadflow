@@ -56,6 +56,24 @@ export const followUpQueue = new Queue('follow-ups', {
   },
 });
 
+export const anrufPollingQueue = new Queue('anruf-polling', {
+  connection: redisVerbindung,
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: { count: 1000 },
+    removeOnFail: { count: 5000 },
+  },
+});
+
+export const schedulerQueue = new Queue('automatisierung-scheduler', {
+  connection: redisVerbindung,
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 500 },
+  },
+});
+
 export const anrufQueue = new Queue('anrufe', {
   connection: redisVerbindung,
   defaultJobOptions: {

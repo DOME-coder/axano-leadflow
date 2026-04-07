@@ -8,6 +8,7 @@ import {
   leadNotizHinzufuegen,
   leadsNachStatus,
 } from '../dienste/lead.dienst';
+import { prisma } from '../datenbank/prisma.client';
 
 export const leadsRouter = Router();
 leadsRouter.use(authentifizierung);
@@ -70,6 +71,49 @@ leadsRouter.patch('/:id', async (req: Request, res: Response, next: NextFunction
       req.benutzer!.benutzerId
     );
     res.json({ erfolg: true, daten: lead });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// GET /api/v1/kampagnen/:kampagneId/leads/export
+kampagneLeadsRouter.get('/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const leads = await prisma.lead.findMany({
+      where: { kampagneId: req.params.kampagneId, geloescht: false },
+      include: {
+        felddaten: { include: { feld: { select: { bezeichnung: true } } } },
+      },
+      orderBy: { erstelltAm: 'desc' },
+    });
+
+    // CSV-Header
+    const standardFelder = ['Vorname', 'Nachname', 'E-Mail', 'Telefon', 'Status', 'Quelle', 'Erstellt am'];
+    const customFelder = new Set<string>();
+    leads.forEach((l) => l.felddaten.forEach((f) => customFelder.add(f.feld.bezeichnung)));
+    const alleFelder = [...standardFelder, ...customFelder];
+
+    // CSV-Zeilen
+    const zeilen = [alleFelder.join(';')];
+    for (const lead of leads) {
+      const customWerte = new Map(lead.felddaten.map((f) => [f.feld.bezeichnung, f.wert || '']));
+      const zeile = [
+        lead.vorname || '',
+        lead.nachname || '',
+        lead.email || '',
+        lead.telefon || '',
+        lead.status,
+        lead.quelle || '',
+        new Date(lead.erstelltAm).toLocaleString('de-DE'),
+        ...[...customFelder].map((f) => customWerte.get(f) || ''),
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';');
+      zeilen.push(zeile);
+    }
+
+    const csv = '\uFEFF' + zeilen.join('\n'); // BOM für Excel-Kompatibilität
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename=leads-export.csv');
+    res.send(csv);
   } catch (fehler) {
     next(fehler);
   }

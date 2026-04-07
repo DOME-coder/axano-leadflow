@@ -8,6 +8,8 @@ export interface KanalKonfigurationWerte {
   vapiAssistantId: string;
   vapiPhoneNumberId: string;
   vapiPrompt: string;
+  vapiErsteBotschaft: string;
+  vapiVoicemailNachricht: string;
   maxAnrufVersuche: number;
   emailAktiviert: boolean;
   emailTemplateVerpasst: string;
@@ -17,6 +19,7 @@ export interface KanalKonfigurationWerte {
   whatsappKanalId: string;
   whatsappTemplateVerpasst: string;
   whatsappTemplateUnerreichbar: string;
+  whatsappTemplateNichtInteressiert: string;
   kiName: string;
   kiGeschlecht: string;
   kiSprachstil: string;
@@ -91,6 +94,26 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
                 className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-none"
                 rows={3}
                 placeholder="Leer lassen für Standard-Prompt"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium ax-text">Erste Begrüßungsnachricht</label>
+              <input
+                value={werte.vapiErsteBotschaft}
+                onChange={(e) => onAendern('vapiErsteBotschaft', e.target.value)}
+                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
+                placeholder="Hallo, hier ist [Name]. Spreche ich mit {{vorname}} {{nachname}}?"
+              />
+              <p className="text-xs ax-text-tertiaer">Platzhalter: {'{{vorname}}'}, {'{{nachname}}'}</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium ax-text">Voicemail-Nachricht</label>
+              <textarea
+                value={werte.vapiVoicemailNachricht}
+                onChange={(e) => onAendern('vapiVoicemailNachricht', e.target.value)}
+                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-none"
+                rows={2}
+                placeholder="Nachricht die auf der Mailbox hinterlassen wird"
               />
             </div>
             <div className="space-y-1">
@@ -235,7 +258,7 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
                 placeholder="mc_xxx"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium ax-text">Template: Verpasst</label>
                 <input
@@ -250,6 +273,15 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
                 <input
                   value={werte.whatsappTemplateUnerreichbar}
                   onChange={(e) => onAendern('whatsappTemplateUnerreichbar', e.target.value)}
+                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
+                  placeholder="tn_xxx"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium ax-text">Template: Nicht interessiert</label>
+                <input
+                  value={werte.whatsappTemplateNichtInteressiert}
+                  onChange={(e) => onAendern('whatsappTemplateNichtInteressiert', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
                   placeholder="tn_xxx"
                 />

@@ -1,12 +1,13 @@
 import { prisma } from '../datenbank/prisma.client';
 import { vapiAnrufStarten } from './vapi.dienst';
 import { transkriptAnalysieren, voicemailBackupCheck } from './gpt.dienst';
-import { emailMitTemplateSenden } from './email.dienst';
+import { emailMitTemplateSenden, emailSenden } from './email.dienst';
 import { superchatKontaktSuchen, superchatKontaktErstellen, superchatTemplateNachrichtSenden, hatLeadPerWhatsAppGeantwortet } from './whatsapp.dienst';
-import { integrationKonfigurationLesen } from './integrationen.dienst';
+import { integrationKonfigurationLesenMitFallback } from './integrationen.dienst';
 import { socketServer } from '../websocket/socket.handler';
 import { logger } from '../hilfsfunktionen/logger';
 import { anrufQueue, followUpQueue } from '../jobs/queue';
+import { anrufPollingStarten } from '../jobs/anruf-polling.job';
 import { zeitfensterAktiv, naechsterZeitfensterbeginn } from '../hilfsfunktionen/zeitfenster';
 import { istHandynummer } from '../hilfsfunktionen/telefon.formatierung';
 
@@ -15,7 +16,7 @@ interface AnrufZeitslot {
   minute: number;
 }
 
-type FollowUpGrund = 'verpasst' | 'voicemail' | 'unerreichbar';
+type FollowUpGrund = 'verpasst' | 'voicemail' | 'unerreichbar' | 'nichtInteressiert';
 
 /**
  * Startet die Anruf-Sequenz für einen Lead.
@@ -43,7 +44,7 @@ export async function naechstenAnrufPlanen(
 
   if (versuchNummer > kampagne.maxAnrufVersuche) {
     // Alle Versuche erschöpft
-    await prisma.lead.update({
+    const lead = await prisma.lead.update({
       where: { id: leadId },
       data: { status: 'Nicht erreichbar' },
     });
@@ -52,6 +53,16 @@ export async function naechstenAnrufPlanen(
 
     // Follow-up "Nicht erreichbar" senden
     await followUpSenden(leadId, kampagneId, kampagne, 'unerreichbar');
+
+    // Team-Benachrichtigung senden
+    if (kampagne.benachrichtigungEmail) {
+      await teamBenachrichtigungSenden(
+        kampagne.benachrichtigungEmail,
+        lead,
+        'Nicht erreichbar',
+        `Alle ${kampagne.maxAnrufVersuche} Anrufversuche erschöpft.`
+      );
+    }
     return;
   }
 
@@ -140,8 +151,8 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     return;
   }
 
-  // Ab Versuch #2: Prüfe ob Lead zwischenzeitlich per WhatsApp geantwortet hat
-  if (lead.telefon && versuch.versuchNummer > 1) {
+  // Prüfe ob Lead zwischenzeitlich per WhatsApp geantwortet hat
+  if (lead.telefon && versuch.versuchNummer >= 1) {
     try {
       const hatGeantwortet = await hatLeadPerWhatsAppGeantwortet(lead.telefon);
       if (hatGeantwortet) {
@@ -234,9 +245,26 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       content: `\n\n# Lead Information:\n${leadInfo}`,
     };
 
-    // Bestehende Messages (Gesprächshistorie) + Lead-Daten zusammenführen
+    // Aktuelle Uhrzeit als System-Message (damit die KI zeitgemäß begrüßen kann)
+    const aktuelleZeitMessage = {
+      role: 'system',
+      content: `\n\n# Aktuelle Uhrzeit:\n${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`,
+    };
+
+    // Kampagnen-VAPI-Prompt als Haupt-System-Message
+    const vapiPromptMessage = kampagne.vapiPrompt ? {
+      role: 'system',
+      content: kampagne.vapiPrompt,
+    } : null;
+
+    // Bestehende Messages (Gesprächshistorie) + VAPI-Prompt + Lead-Daten + Uhrzeit zusammenführen
     const bisherMessages = (assistantOverrides?.model as Record<string, unknown> | undefined)?.messages as Array<Record<string, string>> | undefined;
-    const alleMessages = [...(bisherMessages || []), leadInfoMessage];
+    const alleMessages = [
+      ...(vapiPromptMessage ? [vapiPromptMessage] : []),
+      ...(bisherMessages || []),
+      leadInfoMessage,
+      aktuelleZeitMessage,
+    ];
 
     if (!assistantOverrides) assistantOverrides = {};
     assistantOverrides = {
@@ -249,6 +277,9 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
 
     // VAPI-Tools + Server-URL hinzufügen
     const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
+    if (apiBaseUrl.includes('localhost')) {
+      logger.warn('API_BASE_URL enthält "localhost" – VAPI kann Tools und Webhooks nicht erreichen. Bitte eine öffentliche URL setzen.');
+    }
     const vapiTools = [
       {
         type: 'function',
@@ -322,13 +353,48 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       },
     ];
 
+    // firstMessage mit Lead-Daten befüllen
+    let firstMessage: string | undefined;
+    if (kampagne.vapiErsteBotschaft) {
+      firstMessage = kampagne.vapiErsteBotschaft
+        .replace(/\{\{vorname\}\}/g, lead.vorname || '')
+        .replace(/\{\{nachname\}\}/g, lead.nachname || '');
+    }
+
     assistantOverrides = {
       ...assistantOverrides,
+      ...(firstMessage ? { firstMessage } : {}),
+      firstMessageMode: 'assistant-speaks-first',
       server: { url: `${apiBaseUrl}/api/v1/webhooks/vapi/tools`, timeoutSeconds: 20 },
       model: {
         ...(assistantOverrides?.model as Record<string, unknown> | undefined),
+        provider: 'openai',
+        model: 'gpt-4o',
         tools: vapiTools,
       },
+      // Stimme (ElevenLabs)
+      voice: {
+        provider: '11labs',
+        voiceId: kampagne.vapiVoiceId || 'EXAVITQu4vr4xnSDxMaL',
+        model: 'eleven_turbo_v2_5',
+        stability: 0.5,
+        similarityBoost: 0.75,
+        useSpeakerBoost: false,
+        speed: 1.05,
+        style: 0.1,
+        optimizeStreamingLatency: 2,
+        inputPunctuationBoundaries: ['，', ';'],
+        language: 'de',
+      },
+      // VAPI Assistant-Konfiguration
+      endCallFunctionEnabled: true,
+      silenceTimeoutSeconds: 30,
+      maxDurationSeconds: 300,
+      backgroundDenoisingEnabled: true,
+      voicemailDetection: { provider: 'twilio' },
+      transcriber: { model: 'nova-3', language: 'de', provider: 'deepgram' },
+      endCallPhrases: ['Auf Wiederhören.', 'Schönen Tag noch.', 'Tschüss.'],
+      ...(kampagne.vapiVoicemailNachricht ? { voicemailMessage: kampagne.vapiVoicemailNachricht } : {}),
     };
 
     // VAPI-Anruf starten
@@ -341,9 +407,11 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       {
         leadId: lead.id,
         kampagneId: versuch.kampagneId,
+        kundeId: kampagne.kundeId || '',
         versuchNr: String(versuch.versuchNummer),
       },
-      assistantOverrides
+      assistantOverrides,
+      kampagne.kundeId
     );
 
     // Call-ID speichern (Lead + AnrufVersuch)
@@ -359,6 +427,9 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     ]);
 
     logger.info(`VAPI Anruf gestartet: Call ${callId} für Lead ${lead.id}`);
+
+    // Polling starten – fragt VAPI alle 10 Sek ab bis der Anruf beendet ist
+    await anrufPollingStarten(callId, anrufVersuchId, kampagne.kundeId || undefined);
 
     // Echtzeit-Event
     const io = socketServer();
@@ -520,8 +591,11 @@ export async function anrufErgebnisVerarbeiten(
   logger.info(`Anruf ${vapiCallId} Ergebnis: ${analyse.verdict} → ${analyse.ergebnis} (Versuch #${versuch.versuchNummer})`);
 
   // Lead-Status basierend auf Ergebnis
+  // WICHTIG: "interessiert" = Termin wurde TATSÄCHLICH gebucht (via terminBuchen Tool)
+  // "rueckruf_geplant" = Kunde hat Interesse aber Termin steht noch aus → Follow-up
   const statusMap: Record<string, string> = {
     interessiert: 'Termin gebucht',
+    rueckruf_geplant: 'Follow-up',
     nicht_interessiert: 'Nicht interessiert',
     falsche_nummer: 'Falsche Nummer',
     voicemail: 'Voicemail',
@@ -554,8 +628,21 @@ export async function anrufErgebnisVerarbeiten(
     await aktivitaetLoggen(versuch.leadId, 'anruf_abgeschlossen',
       `Anruf #${versuch.versuchNummer}: ${analyse.verdict} → Status "${neuerStatus}"`);
 
-    // Bei Endstatus: Sequenz beenden
+    // Bei Endstatus: Follow-up senden + Team-Benachrichtigung + Sequenz beenden
     if (['interessiert', 'nicht_interessiert', 'falsche_nummer'].includes(analyse.ergebnis)) {
+      // Bei "Nicht interessiert": Follow-up WhatsApp/Email senden
+      if (analyse.ergebnis === 'nicht_interessiert') {
+        await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, 'nichtInteressiert');
+      }
+      // Team-Benachrichtigung senden
+      if (kampagne.benachrichtigungEmail) {
+        await teamBenachrichtigungSenden(
+          kampagne.benachrichtigungEmail,
+          versuch.lead,
+          neuerStatus,
+          analyse.zusammenfassung
+        );
+      }
       emitAnrufErgebnis(versuch.kampagneId, versuch.leadId, versuch.versuchNummer, analyse.ergebnis);
       return;
     }
@@ -572,8 +659,8 @@ export async function anrufErgebnisVerarbeiten(
     return;
   }
 
-  // Bei voicemail/nicht_abgenommen/aufgelegt/hung_up/disconnected: nächsten Versuch planen
-  const retryErgebnisse = ['voicemail', 'nicht_abgenommen', 'aufgelegt', 'hung_up', 'disconnected'];
+  // Bei voicemail/rueckruf/nicht_abgenommen/aufgelegt/hung_up/disconnected: nächsten Versuch planen
+  const retryErgebnisse = ['voicemail', 'rueckruf_geplant', 'nicht_abgenommen', 'aufgelegt', 'hung_up', 'disconnected'];
   if (retryErgebnisse.includes(analyse.ergebnis)) {
     await aktivitaetLoggen(versuch.leadId, 'anruf_abgeschlossen',
       `Anruf #${versuch.versuchNummer}: ${analyse.verdict} – nächster Versuch wird geplant`);
@@ -611,7 +698,7 @@ function emitAnrufErgebnis(kampagneId: string, leadId: string, versuchNummer: nu
 async function followUpSenden(
   leadId: string,
   kampagneId: string,
-  kampagne: { emailAktiviert: boolean; whatsappAktiviert: boolean; emailTemplateVerpasst: string | null; emailTemplateVoicemail: string | null; emailTemplateUnerreichbar: string | null; whatsappTemplateVerpasst: string | null; whatsappTemplateUnerreichbar: string | null; whatsappKanalId: string | null },
+  kampagne: { emailAktiviert: boolean; whatsappAktiviert: boolean; emailTemplateVerpasst: string | null; emailTemplateVoicemail: string | null; emailTemplateUnerreichbar: string | null; whatsappTemplateVerpasst: string | null; whatsappTemplateUnerreichbar: string | null; whatsappTemplateNichtInteressiert: string | null; whatsappKanalId: string | null },
   grund: FollowUpGrund
 ) {
   // Zeitfenster-Prüfung (Mo-Fr 09:00-20:00)
@@ -634,13 +721,13 @@ async function followUpSenden(
  */
 export async function followUpDirektSenden(
   leadId: string,
-  kampagne: { emailAktiviert: boolean; whatsappAktiviert: boolean; emailTemplateVerpasst: string | null; emailTemplateVoicemail: string | null; emailTemplateUnerreichbar: string | null; whatsappTemplateVerpasst: string | null; whatsappTemplateUnerreichbar: string | null; whatsappKanalId: string | null },
+  kampagne: { emailAktiviert: boolean; whatsappAktiviert: boolean; emailTemplateVerpasst: string | null; emailTemplateVoicemail: string | null; emailTemplateUnerreichbar: string | null; whatsappTemplateVerpasst: string | null; whatsappTemplateUnerreichbar: string | null; whatsappTemplateNichtInteressiert: string | null; whatsappKanalId: string | null },
   grund: FollowUpGrund
 ) {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     include: {
-      kampagne: { select: { name: true } },
+      kampagne: { select: { name: true, kundeId: true, calendlyLink: true } },
       zugewiesener: { select: { vorname: true, nachname: true } },
       felddaten: { include: { feld: { select: { feldname: true } } } },
     },
@@ -653,18 +740,21 @@ export async function followUpDirektSenden(
     verpasst: kampagne.emailTemplateVerpasst,
     voicemail: kampagne.emailTemplateVoicemail,
     unerreichbar: kampagne.emailTemplateUnerreichbar,
+    nichtInteressiert: kampagne.emailTemplateUnerreichbar, // Fallback auf Unerreichbar-Template
   }[grund];
 
   const whatsappTemplateId: string | null = {
     verpasst: kampagne.whatsappTemplateVerpasst,
     voicemail: null,
     unerreichbar: kampagne.whatsappTemplateUnerreichbar,
+    nichtInteressiert: kampagne.whatsappTemplateNichtInteressiert,
   }[grund];
 
   const grundBezeichnung: Record<FollowUpGrund, string> = {
     verpasst: 'Verpasster Anruf',
     voicemail: 'Voicemail',
     unerreichbar: 'Nicht erreichbar',
+    nichtInteressiert: 'Nicht interessiert',
   };
 
   // E-Mail senden (wenn aktiviert + Template vorhanden)
@@ -681,7 +771,7 @@ export async function followUpDirektSenden(
   // WhatsApp senden (wenn aktiviert + Template + Kanal + Handynummer)
   if (kampagne.whatsappAktiviert && whatsappTemplateId && kampagne.whatsappKanalId && lead.telefon && istHandynummer(lead.telefon)) {
     try {
-      const superchatKonfig = await integrationKonfigurationLesen('superchat');
+      const superchatKonfig = await integrationKonfigurationLesenMitFallback('superchat', lead.kampagne?.kundeId || null);
       if (superchatKonfig?.api_schluessel) {
         const basisUrl = superchatKonfig.basis_url || 'https://api.superchat.de';
         let kontakt = await superchatKontaktSuchen(lead.telefon, superchatKonfig.api_schluessel, basisUrl);
@@ -790,4 +880,39 @@ async function aktivitaetLoggen(
   await prisma.leadAktivitaet.create({
     data: { leadId, typ, beschreibung },
   });
+}
+
+/**
+ * Sendet eine Team-Benachrichtigungs-Email bei Lead-Endstatus.
+ */
+async function teamBenachrichtigungSenden(
+  empfaengerEmail: string,
+  lead: { vorname: string | null; nachname: string | null; email: string | null; telefon: string | null; anrufVersucheAnzahl: number },
+  neuerStatus: string,
+  zusammenfassung?: string | null
+) {
+  const leadName = [lead.vorname, lead.nachname].filter(Boolean).join(' ') || 'Unbekannt';
+
+  try {
+    await emailSenden({
+      an: empfaengerEmail,
+      betreff: `LeadFlow: ${leadName} – ${neuerStatus}`,
+      html: `
+        <div style="font-family: 'Manrope', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a2b4c;">Lead-Status Update</h2>
+          <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${leadName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">E-Mail</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${lead.email || '—'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">Telefon</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${lead.telefon || '—'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">Status</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #ff8049; font-weight: 600;">${neuerStatus}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">Anrufversuche</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${lead.anrufVersucheAnzahl}</td></tr>
+          </table>
+          ${zusammenfassung ? `<div style="background: #f5f7fa; padding: 16px; border-radius: 8px; margin-top: 16px;"><h3 style="margin: 0 0 8px; color: #1a2b4c;">KI-Zusammenfassung</h3><p style="margin: 0; color: #3f4e65;">${zusammenfassung}</p></div>` : ''}
+        </div>
+      `,
+    });
+    logger.info(`Team-Benachrichtigung gesendet an ${empfaengerEmail}: ${leadName} – ${neuerStatus}`);
+  } catch (fehler) {
+    logger.error('Team-Benachrichtigung fehlgeschlagen:', { empfaengerEmail, fehler });
+  }
 }

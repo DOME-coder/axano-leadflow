@@ -16,12 +16,13 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
+import { useUiStore } from '@/stores/ui-store';
+import { benutzeKunden } from '@/hooks/benutze-kunden';
 
 const navElemente = [
   { bezeichnung: 'Dashboard', pfad: '/dashboard', icon: LayoutDashboard },
   { bezeichnung: 'Kampagnen', pfad: '/kampagnen', icon: Megaphone },
   { bezeichnung: 'Kunden', pfad: '/kunden', icon: Building2 },
-  { bezeichnung: 'Leads', pfad: '/leads', icon: Users },
   { bezeichnung: 'Automatisierungen', pfad: '/automatisierungen', icon: Zap },
   { bezeichnung: 'Templates', pfad: '/templates', icon: FileText },
   { bezeichnung: 'Prompt-Bibliothek', pfad: '/prompt-bibliothek', icon: BookOpen },
@@ -34,6 +35,8 @@ export function Seitenleiste() {
   const pathname = usePathname();
   const router = useRouter();
   const { benutzer, abmelden } = useAuthStore();
+  const { ausgewaehlterKundeId, kundeSetzen } = useUiStore();
+  const { data: kunden } = benutzeKunden();
 
   const handleAbmelden = () => {
     abmelden();
@@ -57,6 +60,23 @@ export function Seitenleiste() {
         <img src="/logo.png" alt="Axano" className="h-7 brightness-0 invert" />
         <span className="text-axano-sky-blue/60 text-[10px] font-medium ml-0.5 tracking-wider uppercase">LeadFlow</span>
       </div>
+
+      {/* Kunden-Filter */}
+      {kunden?.eintraege && kunden.eintraege.length > 0 && (
+        <div className="px-3 pt-3 pb-1">
+          <label className="text-axano-sky-blue/40 text-[10px] font-medium uppercase tracking-wider px-1 mb-1 block">Kunde</label>
+          <select
+            value={ausgewaehlterKundeId || ''}
+            onChange={(e) => kundeSetzen(e.target.value || null)}
+            className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white border border-white/10 focus:border-axano-orange focus:outline-none appearance-none cursor-pointer"
+          >
+            <option value="" className="text-gray-900">Alle Kunden</option>
+            {kunden.eintraege.map((k) => (
+              <option key={k.id} value={k.id} className="text-gray-900">{k.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">

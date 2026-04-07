@@ -29,14 +29,15 @@ function transportErstellen() {
   const host = process.env.SMTP_HOST;
   if (!host) return null;
 
+  const benutzer = process.env.SMTP_BENUTZER;
+  const passwort = process.env.SMTP_PASSWORT;
+
   return nodemailer.createTransport({
     host,
     port: parseInt(process.env.SMTP_PORT || '587'),
     secure: process.env.SMTP_PORT === '465',
-    auth: {
-      user: process.env.SMTP_BENUTZER,
-      pass: process.env.SMTP_PASSWORT,
-    },
+    // Auth nur wenn Benutzer und Passwort gesetzt (MailHog braucht keine Auth)
+    ...(benutzer && passwort ? { auth: { user: benutzer, pass: passwort } } : {}),
   });
 }
 

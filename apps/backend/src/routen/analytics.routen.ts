@@ -6,9 +6,10 @@ export const analyticsRouter = Router();
 analyticsRouter.use(authentifizierung);
 
 // GET /api/v1/analytics/uebersicht
-analyticsRouter.get('/uebersicht', async (_req: Request, res: Response, next: NextFunction) => {
+analyticsRouter.get('/uebersicht', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const daten = await plattformUebersicht();
+    const kundeId = typeof req.query.kunde_id === 'string' ? req.query.kunde_id : undefined;
+    const daten = await plattformUebersicht(kundeId);
     res.json({ erfolg: true, daten });
   } catch (fehler) {
     next(fehler);

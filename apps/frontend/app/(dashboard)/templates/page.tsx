@@ -1,14 +1,36 @@
 'use client';
 
 import Link from 'next/link';
-import { Plus, FileText, Trash2 } from 'lucide-react';
+import { Plus, FileText, Trash2, Eye, X } from 'lucide-react';
 import { benutzeTemplates } from '@/hooks/benutze-templates';
 import { apiClient } from '@/lib/api-client';
 import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import type { EmailTemplate } from '@/lib/typen';
 
 export default function TemplatesSeite() {
   const { data: templates, isLoading } = benutzeTemplates();
   const queryClient = useQueryClient();
+  const [vorschauTemplate, setVorschauTemplate] = useState<EmailTemplate | null>(null);
+
+  const beispielDaten: Record<string, string> = {
+    '{{vorname}}': 'Max',
+    '{{nachname}}': 'Mustermann',
+    '{{email}}': 'max@beispiel.de',
+    '{{telefon}}': '+49 170 1234567',
+    '{{firma}}': 'Musterfirma GmbH',
+    '{{kampagne}}': 'Beispiel-Kampagne',
+    '{{datum}}': new Date().toLocaleDateString('de-DE'),
+    '{{calendlyLink}}': 'https://calendly.com/beispiel',
+  };
+
+  const vorschauErstellen = (html: string): string => {
+    let ergebnis = html;
+    for (const [platzhalter, wert] of Object.entries(beispielDaten)) {
+      ergebnis = ergebnis.replaceAll(platzhalter, wert);
+    }
+    return ergebnis;
+  };
 
   const loeschen = async (id: string) => {
     if (!confirm('Template wirklich löschen?')) return;
@@ -78,6 +100,13 @@ export default function TemplatesSeite() {
                   {template.id.substring(0, 8)}...
                 </span>
                 <button
+                  onClick={() => setVorschauTemplate(template)}
+                  className="p-2 rounded-lg ax-text-tertiaer hover:bg-axano-orange/10 hover:text-axano-orange transition-all"
+                  title="Vorschau anzeigen"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                <button
                   onClick={() => loeschen(template.id)}
                   className="p-2 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-all"
                 >
@@ -86,6 +115,51 @@ export default function TemplatesSeite() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Vorschau-Modal */}
+      {vorschauTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setVorschauTemplate(null)}
+          />
+          <div className="relative ax-karte rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col animate-einblenden">
+            <div className="flex items-center justify-between p-5 border-b ax-rahmen-leicht">
+              <div>
+                <h2 className="text-lg font-bold ax-titel">Vorschau: {vorschauTemplate.name}</h2>
+                <p className="text-xs ax-text-sekundaer mt-0.5">Betreff: {vorschauTemplate.betreff}</p>
+              </div>
+              <button
+                onClick={() => setVorschauTemplate(null)}
+                className="p-2 rounded-lg ax-text-tertiaer ax-hover hover:text-[var(--text)] transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="bg-white rounded-lg border p-6">
+                <iframe
+                  srcDoc={vorschauErstellen(vorschauTemplate.htmlInhalt)}
+                  className="w-full border-0"
+                  style={{ minHeight: '400px' }}
+                  title="Template-Vorschau"
+                  sandbox=""
+                />
+              </div>
+              <div className="mt-4 ax-karte-erhoeht rounded-lg p-3">
+                <p className="text-xs font-semibold ax-text-sekundaer mb-2">Verwendete Beispieldaten:</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {Object.entries(beispielDaten).map(([platzhalter, wert]) => (
+                    <p key={platzhalter} className="text-xs ax-text-tertiaer">
+                      <span className="font-mono">{platzhalter}</span> → {wert}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

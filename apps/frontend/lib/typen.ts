@@ -45,6 +45,8 @@ export interface Kampagne {
   vapiAssistantId: string | null;
   vapiPhoneNumberId: string | null;
   vapiPrompt: string | null;
+  vapiErsteBotschaft: string | null;
+  vapiVoicemailNachricht: string | null;
   maxAnrufVersuche: number;
   anrufZeitslots: Array<{ stunde: number; minute: number }>;
   emailAktiviert: boolean;
@@ -63,6 +65,7 @@ export interface Kampagne {
   emailTemplateUnerreichbar: string | null;
   whatsappTemplateVerpasst: string | null;
   whatsappTemplateUnerreichbar: string | null;
+  whatsappTemplateNichtInteressiert: string | null;
   whatsappKanalId: string | null;
   kundeId: string | null;
   kunde?: { id: string; name: string } | null;
@@ -215,6 +218,8 @@ export interface KiGenerierungErgebnis {
   vorlagenId?: string;
   vorlagenBranche?: string;
   vapiPrompt: string;
+  ersteBotschaft: string;
+  voicemailNachricht: string;
   emailTemplates: {
     verpassterAnruf: { betreff: string; html: string };
     voicemailFollowup: { betreff: string; html: string };
@@ -223,6 +228,7 @@ export interface KiGenerierungErgebnis {
   whatsappTemplates: {
     anrufFehlgeschlagen: string;
     unerreichbar: string;
+    nichtInteressiert: string;
   };
   formularfelder: Array<{
     feldname: string;

@@ -1,7 +1,8 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../hilfsfunktionen/logger';
 import { integrationKonfigurationLesen } from './integrationen.dienst';
 
-type AnrufErgebnis = 'interessiert' | 'nicht_interessiert' | 'voicemail' | 'falsche_nummer' | 'nicht_abgenommen' | 'aufgelegt' | 'hung_up' | 'disconnected';
+type AnrufErgebnis = 'interessiert' | 'rueckruf_geplant' | 'nicht_interessiert' | 'voicemail' | 'falsche_nummer' | 'nicht_abgenommen' | 'aufgelegt' | 'hung_up' | 'disconnected';
 
 export interface GptAnalyseErgebnis {
   zusammenfassung: string;
@@ -9,10 +10,6 @@ export interface GptAnalyseErgebnis {
   ergebnis: AnrufErgebnis;
 }
 
-// Exakter System-Prompt aus PRD
-const SYSTEM_PROMPT = 'Du bist ein nützlicher, intelligenter Assistent, spezialisiert auf die Zusammenfassung und Analyse von Gesprächen/Transkripten.';
-
-// Exakter User-Prompt aus CLAUDE_CODE_PROMPT_V2.md
 const ANALYSE_PROMPT = `Du erhältst das Transkript eines Telefonats zwischen einem potenziellen Kunden und einem KI-Agenten. Der Anruf wurde vollständig durchgeführt. Fasse auf Deutsch prägnant zusammen was passiert ist.
 
 Berücksichtige:
@@ -25,18 +22,18 @@ Die Zusammenfassung dient zur internen Dokumentation. Schreibe sachlich, konkret
 Gib AUSSCHLIESSLICH dieses JSON zurück:
 {
   "summary": "[Zusammenfassung auf Deutsch]",
-  "verdict": "[callback scheduled|not interested|wrong number|voicemail|disconnected|hung up]"
+  "verdict": "[appointment booked|callback scheduled|not interested|wrong number|voicemail|disconnected|hung up]"
 }
 
 Verdicts:
-- "callback scheduled" = Rückruf vereinbart oder Termin gebucht
+- "appointment booked" = Termin wurde TATSÄCHLICH gebucht (Datum + Uhrzeit bestätigt und eingetragen)
+- "callback scheduled" = Rückruf gewünscht, Interesse vorhanden aber KEIN fester Termin gebucht
 - "not interested" = Klar kein Interesse geäußert
 - "wrong number" = Falsche Person erreicht
 - "voicemail" = Direkt in Mailbox gelaufen
 - "disconnected" = Unerwartet unterbrochen
 - "hung up" = Sofort aufgelegt ohne echtes Gespräch`;
 
-// Voicemail-Backup-Check Prompt aus CLAUDE_CODE_PROMPT_V2.md
 const VOICEMAIL_BACKUP_PROMPT = `Du erhältst ein Transkript. Deine Aufgabe: erkenne ob die Voicemail fälschlicherweise nicht erkannt wurde oder ob tatsächlich ein Gespräch stattfand.
 
 Gib NUR dieses JSON zurück:
@@ -47,9 +44,9 @@ Gib NUR dieses JSON zurück:
 "voicemail" = Es war die Voicemail
 "call" = Es hat tatsächlich ein Gespräch stattgefunden`;
 
-// Mapping von GPT-Verdicts auf interne Prisma-Enum-Werte
 const verdictMap: Record<string, AnrufErgebnis> = {
-  'callback scheduled': 'interessiert',
+  'callback scheduled': 'rueckruf_geplant',
+  'appointment booked': 'interessiert',
   'not interested': 'nicht_interessiert',
   'wrong number': 'falsche_nummer',
   'voicemail': 'voicemail',
@@ -58,14 +55,28 @@ const verdictMap: Record<string, AnrufErgebnis> = {
 };
 
 /**
- * Analysiert ein Anruf-Transkript mit GPT und gibt Zusammenfassung + Verdict zurück.
+ * Erstellt einen Anthropic Client (aus Integrations-Config oder Umgebungsvariable).
+ */
+async function claudeClientErstellen(): Promise<Anthropic | null> {
+  const konfig = await integrationKonfigurationLesen('anthropic');
+  if (konfig?.api_schluessel) {
+    return new Anthropic({ apiKey: konfig.api_schluessel });
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return null;
+}
+
+/**
+ * Analysiert ein Anruf-Transkript mit Claude und gibt Zusammenfassung + Verdict zurück.
  */
 export async function transkriptAnalysieren(
   transkript: string,
   endedReason?: string,
   _benutzerdefinierterPrompt?: string
 ): Promise<GptAnalyseErgebnis> {
-  // Schnelle Heuristiken bevor GPT aufgerufen wird
+  // Schnelle Heuristiken bevor Claude aufgerufen wird
   if (!transkript || transkript.trim().length < 10) {
     if (endedReason === 'customer-did-not-answer' || endedReason === 'no-answer') {
       return { zusammenfassung: 'Niemand hat abgenommen.', verdict: 'hung up', ergebnis: 'nicht_abgenommen' };
@@ -79,67 +90,57 @@ export async function transkriptAnalysieren(
     return { zusammenfassung: 'Kein Kontakt hergestellt.', verdict: 'hung up', ergebnis: 'nicht_abgenommen' };
   }
 
-  const konfig = await integrationKonfigurationLesen('openai');
-  if (!konfig?.api_schluessel) {
-    logger.warn('OpenAI API-Key nicht konfiguriert – verwende Heuristik');
+  const client = await claudeClientErstellen();
+  if (!client) {
+    logger.warn('Anthropic API-Key nicht konfiguriert – verwende Heuristik');
     return heuristikAnalyse(transkript, endedReason);
   }
 
-  const modell = konfig.modell || 'gpt-4o-mini';
-
   try {
-    const antwort = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${konfig.api_schluessel}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modell,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `${ANALYSE_PROMPT}\n\nTranskript: ${transkript}` },
-        ],
-        response_format: { type: 'json_object' },
-        max_tokens: 500,
-        temperature: 0,
-      }),
+    const antwort = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `${ANALYSE_PROMPT}\n\nTranskript:\n${transkript}`,
+      }],
     });
 
-    if (!antwort.ok) {
-      logger.error('OpenAI API Fehler:', { status: antwort.status });
+    const textBlock = antwort.content.find((block) => block.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      logger.warn('Claude gab keine Text-Antwort zurück');
       return heuristikAnalyse(transkript, endedReason);
     }
 
-    const daten = await antwort.json() as {
-      choices: Array<{ message: { content: string } }>;
-    };
+    const rohText = textBlock.text.trim();
 
-    const rohAntwort = daten.choices[0]?.message?.content;
-    if (!rohAntwort) {
-      logger.warn('GPT gab leere Antwort zurück');
-      return heuristikAnalyse(transkript, endedReason);
+    // JSON extrahieren
+    let jsonText = rohText;
+    const jsonStart = rohText.indexOf('{');
+    const jsonEnd = rohText.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      jsonText = rohText.substring(jsonStart, jsonEnd + 1);
     }
 
     try {
-      const gptJson = JSON.parse(rohAntwort) as { summary?: string; verdict?: string };
-      const verdict = gptJson.verdict?.toLowerCase().trim() || '';
-      const zusammenfassung = gptJson.summary || '';
+      const claudeJson = JSON.parse(jsonText) as { summary?: string; verdict?: string };
+      const verdict = claudeJson.verdict?.toLowerCase().trim() || '';
+      const zusammenfassung = claudeJson.summary || '';
 
       const ergebnis = verdictMap[verdict];
       if (ergebnis) {
-        logger.info(`GPT-Analyse: ${verdict} → ${ergebnis}`);
+        logger.info(`Claude-Analyse: ${verdict} → ${ergebnis}`);
         return { zusammenfassung, verdict, ergebnis };
       }
 
-      logger.warn(`GPT gab ungültiges Verdict: "${verdict}" – verwende Heuristik`);
+      logger.warn(`Claude gab ungültiges Verdict: "${verdict}" – verwende Heuristik`);
       return heuristikAnalyse(transkript, endedReason);
     } catch {
-      logger.warn('GPT-Antwort ist kein gültiges JSON – verwende Heuristik');
+      logger.warn('Claude-Antwort ist kein gültiges JSON – verwende Heuristik');
       return heuristikAnalyse(transkript, endedReason);
     }
   } catch (fehler) {
-    logger.error('GPT-Analyse fehlgeschlagen:', { error: fehler });
+    logger.error('Claude-Analyse fehlgeschlagen:', { error: fehler });
     return heuristikAnalyse(transkript, endedReason);
   }
 }
@@ -153,48 +154,36 @@ export async function voicemailBackupCheck(transkript: string): Promise<'voicema
     return 'voicemail';
   }
 
-  const konfig = await integrationKonfigurationLesen('openai');
-  if (!konfig?.api_schluessel) {
-    logger.warn('OpenAI API-Key nicht konfiguriert – Voicemail-Backup-Check übersprungen');
+  const client = await claudeClientErstellen();
+  if (!client) {
+    logger.warn('Anthropic API-Key nicht konfiguriert – Voicemail-Backup-Check übersprungen');
     return 'voicemail';
   }
 
-  const modell = konfig.modell || 'gpt-4o-mini';
-
   try {
-    const antwort = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${konfig.api_schluessel}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modell,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `${VOICEMAIL_BACKUP_PROMPT}\n\nTranskript: ${transkript}` },
-        ],
-        response_format: { type: 'json_object' },
-        max_tokens: 50,
-        temperature: 0,
-      }),
+    const antwort = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 50,
+      messages: [{
+        role: 'user',
+        content: `${VOICEMAIL_BACKUP_PROMPT}\n\nTranskript:\n${transkript}`,
+      }],
     });
 
-    if (!antwort.ok) {
-      logger.error('Voicemail-Backup-Check API Fehler:', { status: antwort.status });
-      return 'voicemail';
+    const textBlock = antwort.content.find((block) => block.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') return 'voicemail';
+
+    const rohText = textBlock.text.trim();
+    let jsonText = rohText;
+    const jsonStart = rohText.indexOf('{');
+    const jsonEnd = rohText.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      jsonText = rohText.substring(jsonStart, jsonEnd + 1);
     }
 
-    const daten = await antwort.json() as {
-      choices: Array<{ message: { content: string } }>;
-    };
-
-    const rohAntwort = daten.choices[0]?.message?.content;
-    if (!rohAntwort) return 'voicemail';
-
     try {
-      const gptJson = JSON.parse(rohAntwort) as { verdict?: string };
-      const verdict = gptJson.verdict?.toLowerCase().trim();
+      const claudeJson = JSON.parse(jsonText) as { verdict?: string };
+      const verdict = claudeJson.verdict?.toLowerCase().trim();
 
       if (verdict === 'call') {
         logger.info('Voicemail-Backup-Check: War doch ein echtes Gespräch');
@@ -213,7 +202,7 @@ export async function voicemailBackupCheck(transkript: string): Promise<'voicema
 }
 
 /**
- * Fallback-Heuristik wenn GPT nicht verfügbar ist.
+ * Fallback-Heuristik wenn Claude nicht verfügbar ist.
  */
 function heuristikAnalyse(transkript: string, endedReason?: string): GptAnalyseErgebnis {
   const text = transkript.toLowerCase();
@@ -235,7 +224,7 @@ function heuristikAnalyse(transkript: string, endedReason?: string): GptAnalyseE
     return { zusammenfassung: 'Voicemail/Mailbox erreicht.', verdict: 'voicemail', ergebnis: 'voicemail' };
   }
   if (text.includes('termin') || text.includes('interesse') || text.includes('ja gerne') || text.includes('klingt gut')) {
-    return { zusammenfassung: 'Person zeigt Interesse, möglicher Termin.', verdict: 'callback scheduled', ergebnis: 'interessiert' };
+    return { zusammenfassung: 'Person zeigt Interesse, Termin/Rückruf gewünscht.', verdict: 'callback scheduled', ergebnis: 'rueckruf_geplant' };
   }
   if (text.includes('kein interesse') || text.includes('nein danke') || text.includes('nicht interessiert')) {
     return { zusammenfassung: 'Kein Interesse geäußert.', verdict: 'not interested', ergebnis: 'nicht_interessiert' };

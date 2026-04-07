@@ -5,7 +5,7 @@ import { webhookSignaturVerifizieren } from '../hilfsfunktionen/webhook.verifika
 import { leadErstellen } from '../dienste/lead.dienst';
 import { facebookLeadAbrufen, facebookWebhookPayloadParsen } from '../dienste/facebook.dienst';
 import { superchatNachrichtParsen } from '../dienste/whatsapp.dienst';
-import { integrationKonfigurationLesen } from '../dienste/integrationen.dienst';
+import { integrationKonfigurationLesenMitFallback } from '../dienste/integrationen.dienst';
 import { socketServer } from '../websocket/socket.handler';
 import { logger } from '../hilfsfunktionen/logger';
 
@@ -155,7 +155,7 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
     let zugriffstoken = triggerKonfig?.seiten_zugriffstoken;
 
     if (!zugriffstoken) {
-      const fbKonfig = await integrationKonfigurationLesen('facebook');
+      const fbKonfig = await integrationKonfigurationLesenMitFallback('facebook', kampagne.kundeId);
       zugriffstoken = fbKonfig?.seiten_zugriffstoken;
     }
 
@@ -165,10 +165,13 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
         if (aenderung.field === 'leadgen') {
           let leadDaten;
 
+          // Feldmappings aus der Trigger-Konfiguration laden
+          const feldMappings = triggerKonfig?.feldMappings as Array<{ facebookFeldname: string; kampagneFeldname: string }> | undefined;
+
           // Versuch 1: Lead-Daten per Graph API abrufen (vollständig)
           if (zugriffstoken && aenderung.value?.leadgen_id) {
             try {
-              leadDaten = await facebookLeadAbrufen(aenderung.value.leadgen_id, zugriffstoken);
+              leadDaten = await facebookLeadAbrufen(aenderung.value.leadgen_id, zugriffstoken, feldMappings);
             } catch {
               logger.warn('Facebook Graph API Fallback auf Webhook-Payload');
             }
@@ -176,7 +179,7 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
 
           // Versuch 2: Webhook-Payload direkt parsen (Fallback)
           if (!leadDaten && aenderung.value?.field_data) {
-            leadDaten = facebookWebhookPayloadParsen(aenderung.value.field_data);
+            leadDaten = facebookWebhookPayloadParsen(aenderung.value.field_data, feldMappings);
           }
 
           if (leadDaten) {
@@ -217,7 +220,7 @@ webhooksRouter.post('/superchat/:kampagneSlug', async (req: Request, res: Respon
     }
 
     // Signatur verifizieren
-    const superchatKonfig = await integrationKonfigurationLesen('superchat');
+    const superchatKonfig = await integrationKonfigurationLesenMitFallback('superchat', kampagne.kundeId);
     const webhookGeheimnis = superchatKonfig?.webhook_geheimnis;
 
     if (webhookGeheimnis) {
@@ -309,17 +312,20 @@ webhooksRouter.post('/vapi/tools', async (req: Request, res: Response, _next: Ne
       : toolCall.function?.arguments || {};
     const toolCallId = toolCall.id;
 
-    logger.info(`VAPI Tool-Call: ${toolName}`, { args });
+    // kundeId aus VAPI Call-Metadata extrahieren (wird beim Anruf-Start mitgesendet)
+    const kundeId = req.body?.message?.call?.metadata?.kundeId || null;
+
+    logger.info(`VAPI Tool-Call: ${toolName}`, { args, kundeId });
 
     let ergebnis = '';
 
     switch (toolName) {
       case 'kalenderPruefen':
-        ergebnis = await kalenderPruefen(args.gewuenschteZeit);
+        ergebnis = await kalenderPruefen(args.gewuenschteZeit, kundeId);
         break;
 
       case 'terminBuchen':
-        ergebnis = await terminBuchen(args.gewuenschteZeit, args.telefonnummer, args.vorname, args.nachname);
+        ergebnis = await terminBuchen(args.gewuenschteZeit, args.telefonnummer, args.vorname, args.nachname, kundeId);
         break;
 
       case 'rueckrufPlanen':
@@ -351,8 +357,9 @@ webhooksRouter.post('/vapi/tools', async (req: Request, res: Response, _next: Ne
 // ──────────────────────────────────────────────
 webhooksRouter.post('/vapi', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Optionale Secret-Verification
-    const webhookSecret = process.env.VAPI_WEBHOOK_SECRET;
+    // Optionale Secret-Verification – aus Integrations-Konfiguration oder Umgebungsvariable
+    const vapiKonfig = await integrationKonfigurationLesenMitFallback('vapi');
+    const webhookSecret = vapiKonfig?.webhook_secret || process.env.VAPI_WEBHOOK_SECRET;
     if (webhookSecret && req.headers['x-vapi-secret'] !== webhookSecret) {
       logger.warn('VAPI Webhook mit ungültigem Secret empfangen');
       res.status(401).json({ erfolg: false, fehler: 'Ungültiges Webhook-Secret' });

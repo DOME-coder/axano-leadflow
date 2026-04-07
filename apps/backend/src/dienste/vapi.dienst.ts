@@ -1,5 +1,5 @@
 import { logger } from '../hilfsfunktionen/logger';
-import { integrationKonfigurationLesen } from './integrationen.dienst';
+import { integrationKonfigurationLesenMitFallback } from './integrationen.dienst';
 
 interface VapiAnrufAntwort {
   id: string;
@@ -7,10 +7,10 @@ interface VapiAnrufAntwort {
 }
 
 /**
- * Liest den VAPI API-Key aus der Integrations-Verwaltung.
+ * Liest den VAPI API-Key (pro Kunde oder global).
  */
-async function vapiApiKeyLesen(): Promise<string> {
-  const konfig = await integrationKonfigurationLesen('vapi');
+async function vapiApiKeyLesen(kundeId?: string | null): Promise<string> {
+  const konfig = await integrationKonfigurationLesenMitFallback('vapi', kundeId);
   if (!konfig?.api_schluessel) {
     throw new Error('VAPI API-Schlüssel ist nicht konfiguriert. Bitte unter Einstellungen → Integrationen eintragen.');
   }
@@ -26,9 +26,10 @@ export async function vapiAnrufStarten(
   telefonNummerId: string,
   kundeName?: string,
   metadata?: Record<string, string>,
-  assistantOverrides?: Record<string, unknown>
+  assistantOverrides?: Record<string, unknown>,
+  kundeId?: string | null
 ): Promise<string> {
-  const apiKey = await vapiApiKeyLesen();
+  const apiKey = await vapiApiKeyLesen(kundeId);
 
   const body: Record<string, unknown> = {
     assistantId,
@@ -76,7 +77,7 @@ export async function vapiAnrufStarten(
 /**
  * Ruft den Status eines VAPI-Anrufs ab.
  */
-export async function vapiAnrufAbrufen(callId: string): Promise<{
+export async function vapiAnrufAbrufen(callId: string, kundeId?: string | null): Promise<{
   status: string;
   endedReason?: string;
   transcript?: string;
@@ -84,7 +85,7 @@ export async function vapiAnrufAbrufen(callId: string): Promise<{
   duration?: number;
   recordingUrl?: string;
 }> {
-  const apiKey = await vapiApiKeyLesen();
+  const apiKey = await vapiApiKeyLesen(kundeId);
 
   const antwort = await fetch(`https://api.vapi.ai/call/${callId}`, {
     headers: {

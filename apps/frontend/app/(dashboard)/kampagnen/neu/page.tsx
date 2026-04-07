@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Check, ArrowLeft, ArrowRight, Globe, Mail, MessageSquare, FileText, Megaphone, Phone, Sparkles } from 'lucide-react';
 import { benutzeKampagneErstellen, benutzeKiGenerierung } from '@/hooks/benutze-kampagnen';
@@ -8,6 +8,7 @@ import { benutzeTemplates } from '@/hooks/benutze-templates';
 import { benutzeTemplateErstellen } from '@/hooks/benutze-templates';
 import { benutzeKunden, benutzeKundeErstellen } from '@/hooks/benutze-kunden';
 import { KanalKonfiguration, type KanalKonfigurationWerte } from '@/components/kampagnen/kanal-konfiguration';
+import { useToastStore } from '@/stores/toast-store';
 
 const schritte = [
   { id: 1, bezeichnung: 'Info' },
@@ -32,11 +33,18 @@ interface FeldDefinition {
   pflichtfeld: boolean;
 }
 
+interface FacebookFeldMapping {
+  facebookFeldname: string;
+  kampagneFeldname: string;
+}
+
 const standardKanalWerte: KanalKonfigurationWerte = {
   vapiAktiviert: false,
   vapiAssistantId: '',
   vapiPhoneNumberId: '',
   vapiPrompt: '',
+  vapiErsteBotschaft: '',
+  vapiVoicemailNachricht: '',
   maxAnrufVersuche: 11,
   emailAktiviert: true,
   emailTemplateVerpasst: '',
@@ -46,6 +54,7 @@ const standardKanalWerte: KanalKonfigurationWerte = {
   whatsappKanalId: '',
   whatsappTemplateVerpasst: '',
   whatsappTemplateUnerreichbar: '',
+  whatsappTemplateNichtInteressiert: '',
   kiName: '',
   kiGeschlecht: '',
   kiSprachstil: 'freundlich',
@@ -54,12 +63,21 @@ const standardKanalWerte: KanalKonfigurationWerte = {
 };
 
 export default function NeueKampagneSeite() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="text-muted-foreground">Kampagnen-Wizard wird geladen...</div></div>}>
+      <NeueKampagneInhalt />
+    </Suspense>
+  );
+}
+
+function NeueKampagneInhalt() {
   const router = useRouter();
   const suchParams = useSearchParams();
   const erstellen = benutzeKampagneErstellen();
   const { data: templates } = benutzeTemplates();
   const { data: kunden } = benutzeKunden();
   const kundeErstellen = benutzeKundeErstellen();
+  const { toastAnzeigen } = useToastStore();
 
   const [aktuellerSchritt, setAktuellerSchritt] = useState(0);
   const [kundeId, setKundeId] = useState(suchParams.get('kundeId') || '');
@@ -76,27 +94,40 @@ export default function NeueKampagneSeite() {
   const [produkt, setProdukt] = useState('');
   const [zielgruppe, setZielgruppe] = useState('');
   const [ton, setTon] = useState('freundlich, persönlich');
+  const [zusatzFelderText, setZusatzFelderText] = useState('');
   const [kiGeneriert, setKiGeneriert] = useState(false);
   const [kiQuelle, setKiQuelle] = useState<'bibliothek' | 'generiert' | null>(null);
   const [kiBranche, setKiBranche] = useState('');
   const kiGenerierung = benutzeKiGenerierung();
   const templateErstellen = benutzeTemplateErstellen();
 
+  // Facebook-Feldmapping
+  const [facebookFeldMappings, setFacebookFeldMappings] = useState<FacebookFeldMapping[]>([]);
+
   const kiGenerieren = async () => {
     setFehler('');
     try {
+      // Zusatzfelder aus komma-separiertem Text parsen
+      const zusatzFelder = zusatzFelderText
+        .split(',')
+        .map((f) => f.trim())
+        .filter((f) => f.length > 0);
+
       const ergebnis = await kiGenerierung.mutateAsync({
         branche, produkt, zielgruppe, ton,
         kiName: kanalWerte.kiName || undefined,
         kiGeschlecht: kanalWerte.kiGeschlecht || undefined,
         kiSprachstil: kanalWerte.kiSprachstil || undefined,
+        zusatzFelder: zusatzFelder.length > 0 ? zusatzFelder : undefined,
       });
 
-      // VAPI-Prompt setzen
+      // VAPI-Prompt + ersteBotschaft + voicemailNachricht setzen
       setKanalWerte((prev) => ({
         ...prev,
         vapiAktiviert: true,
         vapiPrompt: ergebnis.vapiPrompt,
+        vapiErsteBotschaft: ergebnis.ersteBotschaft || '',
+        vapiVoicemailNachricht: ergebnis.voicemailNachricht || '',
         emailAktiviert: true,
         whatsappAktiviert: true,
       }));
@@ -129,11 +160,12 @@ export default function NeueKampagneSeite() {
         emailTemplateUnerreichbar: templateIds.unerreichbar || '',
       }));
 
-      // WhatsApp-Templates als IDs speichern (werden direkt als Text genutzt)
+      // WhatsApp-Templates speichern
       setKanalWerte((prev) => ({
         ...prev,
         whatsappTemplateVerpasst: ergebnis.whatsappTemplates.anrufFehlgeschlagen,
         whatsappTemplateUnerreichbar: ergebnis.whatsappTemplates.unerreichbar,
+        whatsappTemplateNichtInteressiert: ergebnis.whatsappTemplates.nichtInteressiert || '',
       }));
 
       // Formularfelder setzen
@@ -147,8 +179,10 @@ export default function NeueKampagneSeite() {
       setKiGeneriert(true);
       setKiQuelle(ergebnis.quelle || 'generiert');
       setKiBranche(ergebnis.vorlagenBranche || branche);
+      toastAnzeigen('erfolg', 'KI-Inhalte erfolgreich generiert');
     } catch {
       setFehler('KI-Generierung fehlgeschlagen. Bitte prüfen Sie den Anthropic API-Schlüssel unter Einstellungen → Integrationen.');
+      toastAnzeigen('fehler', 'KI-Generierung fehlgeschlagen');
     }
   };
 
@@ -218,10 +252,19 @@ export default function NeueKampagneSeite() {
         finalKundeId = neuerKunde.id;
       }
 
+      // Trigger-Konfiguration mit Facebook-Feldmappings
+      const triggerKonfiguration: Record<string, unknown> = {};
+      if (triggerTyp === 'facebook_lead_ads' && facebookFeldMappings.length > 0) {
+        triggerKonfiguration.feldMappings = facebookFeldMappings.filter(
+          (m) => m.facebookFeldname.trim() && m.kampagneFeldname.trim()
+        );
+      }
+
       const kampagne = await erstellen.mutateAsync({
         name: name.trim(),
         beschreibung: beschreibung.trim() || undefined,
         triggerTyp,
+        triggerKonfiguration: Object.keys(triggerKonfiguration).length > 0 ? triggerKonfiguration : undefined,
         kundeId: finalKundeId,
         branche: branche.trim() || null,
         produkt: produkt.trim() || null,
@@ -237,6 +280,8 @@ export default function NeueKampagneSeite() {
         vapiAssistantId: kanalWerte.vapiAssistantId || null,
         vapiPhoneNumberId: kanalWerte.vapiPhoneNumberId || null,
         vapiPrompt: kanalWerte.vapiPrompt || null,
+        vapiErsteBotschaft: kanalWerte.vapiErsteBotschaft || null,
+        vapiVoicemailNachricht: kanalWerte.vapiVoicemailNachricht || null,
         maxAnrufVersuche: kanalWerte.maxAnrufVersuche,
         emailAktiviert: kanalWerte.emailAktiviert,
         emailTemplateVerpasst: kanalWerte.emailTemplateVerpasst || null,
@@ -246,13 +291,17 @@ export default function NeueKampagneSeite() {
         whatsappKanalId: kanalWerte.whatsappKanalId || null,
         whatsappTemplateVerpasst: kanalWerte.whatsappTemplateVerpasst || null,
         whatsappTemplateUnerreichbar: kanalWerte.whatsappTemplateUnerreichbar || null,
+        whatsappTemplateNichtInteressiert: kanalWerte.whatsappTemplateNichtInteressiert || null,
         benachrichtigungEmail: kanalWerte.benachrichtigungEmail || null,
         calendlyLink: kanalWerte.calendlyLink || null,
       });
 
       router.push(`/kampagnen/${kampagne.id}/leads`);
-    } catch {
-      setFehler('Fehler beim Erstellen der Kampagne');
+    } catch (err) {
+      const fehlerNachricht = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      console.error('Kampagne erstellen fehlgeschlagen:', err);
+      setFehler(`Fehler beim Erstellen der Kampagne: ${fehlerNachricht}`);
+      toastAnzeigen('fehler', `Fehler beim Erstellen der Kampagne: ${fehlerNachricht}`);
     }
   };
 
@@ -405,6 +454,17 @@ export default function NeueKampagneSeite() {
                   />
                 </div>
               </div>
+              <div className="mt-3 space-y-1">
+                <label className="text-xs font-medium ax-text">Zusätzliche Datenfelder (telefonisch abfragen)</label>
+                <input
+                  type="text"
+                  value={zusatzFelderText}
+                  onChange={(e) => setZusatzFelderText(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg ax-eingabe"
+                  placeholder="z.B. Rasse des Pferdes, Geschlecht, Geburtsdatum, Vorerkrankungen"
+                />
+                <p className="text-xs ax-text-tertiaer">Komma-separiert. Diese Felder werden im VAPI-Prompt und als Formularfelder verwendet.</p>
+              </div>
               <button
                 onClick={kiGenerieren}
                 disabled={!branche || !produkt || !zielgruppe || !ton || kiGenerierung.isPending}
@@ -438,8 +498,10 @@ export default function NeueKampagneSeite() {
                   {kiQuelle !== 'bibliothek' && (
                     <>
                       <p>3 E-Mail-Templates erstellt</p>
-                      <p>2 WhatsApp-Templates erstellt</p>
+                      <p>3 WhatsApp-Templates erstellt</p>
                       <p>{felder.length} Formularfelder generiert</p>
+                      {kanalWerte.vapiErsteBotschaft && <p>Erste Begrüßungsnachricht generiert</p>}
+                      {kanalWerte.vapiVoicemailNachricht && <p>Voicemail-Nachricht generiert</p>}
                     </>
                   )}
                   <p className="text-xs opacity-70 mt-1">Alle Inhalte sind in den folgenden Schritten bearbeitbar.</p>
@@ -451,28 +513,79 @@ export default function NeueKampagneSeite() {
 
         {/* Schritt 2: Trigger */}
         {aktuellerSchritt === 1 && (
-          <div className="grid grid-cols-1 gap-3">
-            {triggerOptionen.map((option) => (
-              <button
-                key={option.wert}
-                onClick={() => setTriggerTyp(option.wert)}
-                className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-all text-left ${
-                  triggerTyp === option.wert
-                    ? 'border-axano-orange bg-orange-50/50 dark:bg-orange-900/20'
-                    : 'ax-rahmen border-[var(--rahmen)] hover:border-[var(--text-tertiaer)]'
-                }`}
-              >
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  triggerTyp === option.wert ? 'bg-axano-orange text-white' : 'ax-karte-erhoeht ax-text'
-                }`}>
-                  <option.icon className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm ax-titel">{option.bezeichnung}</p>
-                  <p className="text-xs ax-text-sekundaer">{option.beschreibung}</p>
-                </div>
-              </button>
-            ))}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3">
+              {triggerOptionen.map((option) => (
+                <button
+                  key={option.wert}
+                  onClick={() => setTriggerTyp(option.wert)}
+                  className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-all text-left ${
+                    triggerTyp === option.wert
+                      ? 'border-axano-orange bg-orange-50/50 dark:bg-orange-900/20'
+                      : 'ax-rahmen border-[var(--rahmen)] hover:border-[var(--text-tertiaer)]'
+                  }`}
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    triggerTyp === option.wert ? 'bg-axano-orange text-white' : 'ax-karte-erhoeht ax-text'
+                  }`}>
+                    <option.icon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm ax-titel">{option.bezeichnung}</p>
+                    <p className="text-xs ax-text-sekundaer">{option.beschreibung}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Facebook-Feldmapping */}
+            {triggerTyp === 'facebook_lead_ads' && (
+              <div className="border-t ax-rahmen-leicht pt-4">
+                <h3 className="text-sm font-semibold ax-titel mb-2">Facebook-Formularfeld-Mapping</h3>
+                <p className="text-xs ax-text-sekundaer mb-3">
+                  Ordnen Sie Facebook-Formularfelder den Kampagnenfeldern zu. Standard-Felder (first_name, last_name, email, phone_number) werden automatisch gemappt.
+                </p>
+                {facebookFeldMappings.map((mapping, index) => (
+                  <div key={index} className="flex gap-2 items-center mb-2">
+                    <input
+                      type="text"
+                      value={mapping.facebookFeldname}
+                      onChange={(e) => {
+                        const aktualisiert = [...facebookFeldMappings];
+                        aktualisiert[index] = { ...aktualisiert[index], facebookFeldname: e.target.value };
+                        setFacebookFeldMappings(aktualisiert);
+                      }}
+                      className="flex-1 px-3 py-2 text-sm rounded-lg ax-eingabe"
+                      placeholder="Facebook-Feldname (z.B. geschlecht_deines_pferdes)"
+                    />
+                    <span className="ax-text-tertiaer text-xs">→</span>
+                    <input
+                      type="text"
+                      value={mapping.kampagneFeldname}
+                      onChange={(e) => {
+                        const aktualisiert = [...facebookFeldMappings];
+                        aktualisiert[index] = { ...aktualisiert[index], kampagneFeldname: e.target.value };
+                        setFacebookFeldMappings(aktualisiert);
+                      }}
+                      className="flex-1 px-3 py-2 text-sm rounded-lg ax-eingabe"
+                      placeholder="Kampagnenfeld (z.B. pferd_geschlecht)"
+                    />
+                    <button
+                      onClick={() => setFacebookFeldMappings(facebookFeldMappings.filter((_, i) => i !== index))}
+                      className="text-red-400 hover:text-red-600 p-1 transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setFacebookFeldMappings([...facebookFeldMappings, { facebookFeldname: '', kampagneFeldname: '' }])}
+                  className="w-full border-2 border-dashed ax-rahmen border-[var(--rahmen)] ax-text-sekundaer hover:border-axano-orange hover:text-axano-orange rounded-lg py-2 text-xs font-medium transition-all"
+                >
+                  + Feldmapping hinzufügen
+                </button>
+              </div>
+            )}
           </div>
         )}
 

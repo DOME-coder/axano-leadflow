@@ -2,11 +2,23 @@ import { prisma } from '../datenbank/prisma.client';
 import { socketServer } from '../websocket/socket.handler';
 import { anrufQueue } from '../jobs/queue';
 import { logger } from '../hilfsfunktionen/logger';
+import { kalenderAnbieterErstellen } from './kalender.dienst';
+
+const zeitFormatieren = (d: Date) => {
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return m === 0 ? `${h} Uhr` : `${h} Uhr ${m}`;
+};
+
+const datumFormatieren = (d: Date) => {
+  return d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+};
 
 /**
  * Prüft Kalender-Verfügbarkeit um eine gewünschte Zeit.
+ * Nutzt echten Google Calendar wenn konfiguriert, sonst interne DB.
  */
-export async function kalenderPruefen(gewuenschteZeit: string): Promise<string> {
+export async function kalenderPruefen(gewuenschteZeit: string, kundeId?: string | null): Promise<string> {
   const zeit = new Date(gewuenschteZeit);
   if (isNaN(zeit.getTime())) return 'Ich konnte die gewünschte Zeit leider nicht erkennen. Kannst du mir Tag und Uhrzeit nochmal nennen?';
 
@@ -23,55 +35,64 @@ export async function kalenderPruefen(gewuenschteZeit: string): Promise<string> 
     return 'Unsere Termine sind zwischen 8 Uhr und 19 Uhr verfügbar. Welche Uhrzeit in diesem Zeitraum passt dir am besten?';
   }
 
-  // 5 Slots um die gewünschte Zeit prüfen (gewünscht, ±30min, ±60min)
+  // Versuche echten Kalender
+  try {
+    const kalender = await kalenderAnbieterErstellen(kundeId);
+    if (kalender) {
+      const freieSlots = await kalender.verfuegbarkeitPruefen(zeit, 30);
+      // Slots in der Nähe der Wunschzeit finden (±2 Stunden)
+      const relevanteSlots = freieSlots.filter((s) => {
+        const diff = Math.abs(s.beginn.getTime() - zeit.getTime());
+        return diff <= 2 * 60 * 60 * 1000;
+      }).slice(0, 5);
+
+      if (relevanteSlots.length === 0) {
+        return 'Um die gewünschte Uhrzeit ist leider nichts mehr frei. Hast du einen anderen Tag oder eine andere Uhrzeit im Kopf?';
+      }
+
+      const wunschFrei = relevanteSlots.some((s) => Math.abs(s.beginn.getTime() - zeit.getTime()) < 15 * 60 * 1000);
+      if (wunschFrei) {
+        return `Am ${datumFormatieren(zeit)} um ${zeitFormatieren(zeit)} ist ein Termin frei. Soll ich den direkt für dich eintragen?`;
+      }
+
+      const alternativen = relevanteSlots.slice(0, 3).map((s) => zeitFormatieren(s.beginn)).join(', ');
+      return `Um ${zeitFormatieren(zeit)} ist leider nichts frei. Wir hätten am ${datumFormatieren(relevanteSlots[0].beginn)} um ${alternativen} noch Slots frei – passt einer davon für dich?`;
+    }
+  } catch (fehler) {
+    logger.warn('Echte Kalenderprüfung fehlgeschlagen, Fallback auf DB:', { error: fehler });
+  }
+
+  // Fallback: Interne DB-Prüfung
   const slotZeiten = [0, 30, -30, 60, -60].map((offset) => {
     const s = new Date(zeit);
     s.setMinutes(s.getMinutes() + offset);
     return s;
   }).filter((s) => s.getHours() >= 8 && s.getHours() < 19);
 
-  // Bestehende Termine in diesem Zeitfenster laden
   const fensterStart = new Date(zeit);
   fensterStart.setHours(fensterStart.getHours() - 2);
   const fensterEnde = new Date(zeit);
   fensterEnde.setHours(fensterEnde.getHours() + 2);
 
   const bestehende = await prisma.termin.findMany({
-    where: {
-      beginnAm: { gte: fensterStart, lte: fensterEnde },
-    },
+    where: { beginnAm: { gte: fensterStart, lte: fensterEnde } },
     select: { beginnAm: true },
   });
 
   const belegteZeiten = bestehende.map((t) => t.beginnAm.getTime());
-
-  // Freie Slots finden (30-Min-Fenster)
   const freieSlots = slotZeiten.filter((s) => {
     return !belegteZeiten.some((b) => Math.abs(b - s.getTime()) < 30 * 60 * 1000);
   });
 
-  const zeitFormatieren = (d: Date) => {
-    const h = d.getHours();
-    const m = d.getMinutes();
-    return m === 0 ? `${h} Uhr` : `${h} Uhr ${m}`;
-  };
-
-  const datumFormatieren = (d: Date) => {
-    return d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
-  };
-
   if (freieSlots.length === 0) {
-    return `Um die gewünschte Uhrzeit ist leider nichts mehr frei. Hast du einen anderen Tag oder eine andere Uhrzeit im Kopf?`;
+    return 'Um die gewünschte Uhrzeit ist leider nichts mehr frei. Hast du einen anderen Tag oder eine andere Uhrzeit im Kopf?';
   }
 
-  // Prüfe ob der Wunschslot selbst frei ist
   const wunschFrei = freieSlots[0].getTime() === zeit.getTime();
-
   if (wunschFrei) {
     return `Am ${datumFormatieren(zeit)} um ${zeitFormatieren(zeit)} ist ein Termin frei. Soll ich den direkt für dich eintragen?`;
   }
 
-  // Alternativen vorschlagen
   const alternativen = freieSlots.slice(0, 3).map((s) => zeitFormatieren(s)).join(', ');
   return `Um ${zeitFormatieren(zeit)} ist leider nichts frei. Wir hätten am ${datumFormatieren(freieSlots[0])} um ${alternativen} noch Slots frei – passt einer davon für dich?`;
 }
@@ -83,7 +104,8 @@ export async function terminBuchen(
   gewuenschteZeit: string,
   telefonnummer: string,
   vorname: string,
-  nachname: string
+  nachname: string,
+  _kundeId?: string | null
 ): Promise<string> {
   const zeit = new Date(gewuenschteZeit);
   if (isNaN(zeit.getTime())) return 'Die gewünschte Zeit konnte nicht verarbeitet werden.';
@@ -96,7 +118,31 @@ export async function terminBuchen(
   const endeAm = new Date(zeit);
   endeAm.setMinutes(endeAm.getMinutes() + 30);
 
-  // Termin erstellen
+  // Echten Kalender-Termin erstellen (wenn konfiguriert)
+  let externeId: string | undefined;
+  let meetingLink: string | undefined;
+  let terminQuelle: 'manuell' | 'google_calendar' = 'manuell';
+
+  try {
+    const kalender = await kalenderAnbieterErstellen(_kundeId);
+    if (kalender) {
+      const kalenderErgebnis = await kalender.terminErstellen({
+        titel: `Beratungstermin: ${vorname} ${nachname}`,
+        beschreibung: `Lead-Telefon: ${telefonnummer}`,
+        beginn: zeit,
+        ende: endeAm,
+        teilnehmerEmail: lead?.email || undefined,
+      });
+      externeId = kalenderErgebnis.externeId;
+      meetingLink = kalenderErgebnis.meetingLink;
+      terminQuelle = 'google_calendar';
+      logger.info(`Externer Kalender-Termin erstellt: ${externeId}`);
+    }
+  } catch (fehler) {
+    logger.warn('Externer Kalender-Termin fehlgeschlagen, nur DB-Eintrag:', { error: fehler });
+  }
+
+  // Termin in DB erstellen
   await prisma.termin.create({
     data: {
       leadId: lead?.id,
@@ -104,7 +150,9 @@ export async function terminBuchen(
       titel: `Beratungstermin: ${vorname} ${nachname}`,
       beginnAm: zeit,
       endeAm,
-      quelle: 'manuell',
+      quelle: terminQuelle,
+      externeId,
+      meetingLink,
     },
   });
 
@@ -143,6 +191,10 @@ export async function terminBuchen(
 
   const datumStr = zeit.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
   const uhrzeitStr = zeit.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+  if (meetingLink) {
+    return `Der Termin am ${datumStr} um ${uhrzeitStr} ist eingetragen. Du erhältst eine Einladung per E-Mail mit dem Meetinglink.`;
+  }
   return `Der Termin am ${datumStr} um ${uhrzeitStr} ist eingetragen. Du erhältst zeitnah eine Meetingeinladung per E-Mail mit einem Link zum Online-Meeting.`;
 }
 
