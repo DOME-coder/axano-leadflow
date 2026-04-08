@@ -804,7 +804,64 @@ export async function followUpDirektSenden(
 }
 
 /**
+ * Liefert die aktuellen Berlin-Zeit-Komponenten unabhängig von der Server-Zeitzone.
+ */
+function berlinZeitKomponenten(jetzt: Date): {
+  jahr: number;
+  monat: number; // 0-basiert
+  tag: number;
+  stunde: number;
+  minute: number;
+  wochentag: number; // 0=So .. 6=Sa
+} {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  });
+  const teile = Object.fromEntries(
+    fmt.formatToParts(jetzt).map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  const wochentagMap: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  };
+  return {
+    jahr: parseInt(teile.year, 10),
+    monat: parseInt(teile.month, 10) - 1,
+    tag: parseInt(teile.day, 10),
+    stunde: parseInt(teile.hour === '24' ? '0' : teile.hour, 10),
+    minute: parseInt(teile.minute, 10),
+    wochentag: wochentagMap[teile.weekday] ?? 0,
+  };
+}
+
+/**
+ * Konstruiert ein Date-Objekt, das einer bestimmten Wanduhr-Zeit in Berlin entspricht.
+ * Behandelt DST-Übergänge korrekt durch Iterationsschritt.
+ */
+function berlinDatumErzeugen(jahr: number, monat: number, tag: number, stunde: number, minute: number): Date {
+  // Erster Versuch: interpretiere Berlin-Wanduhr als wäre es UTC
+  let utcKandidat = new Date(Date.UTC(jahr, monat, tag, stunde, minute, 0));
+  // Zweimal iterieren reicht für DST: bestimme den tatsächlichen Berlin-Offset und korrigiere
+  for (let i = 0; i < 2; i++) {
+    const sieht = berlinZeitKomponenten(utcKandidat);
+    const sollMinuten = stunde * 60 + minute;
+    const istMinuten = sieht.stunde * 60 + sieht.minute;
+    const diffMinuten = sollMinuten - istMinuten;
+    if (diffMinuten === 0) break;
+    utcKandidat = new Date(utcKandidat.getTime() + diffMinuten * 60 * 1000);
+  }
+  return utcKandidat;
+}
+
+/**
  * Berechnet die nächste Anrufzeit basierend auf Zeitslots.
+ * Alle Berechnungen erfolgen in Europe/Berlin und sind unabhängig von der Server-Zeitzone.
  */
 function naechsteAnrufzeitBerechnen(zeitslots?: AnrufZeitslot[]): Date {
   const jetzt = new Date();
@@ -817,50 +874,49 @@ function naechsteAnrufzeitBerechnen(zeitslots?: AnrufZeitslot[]): Date {
   ];
   const verzoegerung = 10;
 
-  // Aktuelle Stunde/Minute in Berlin
-  const berlinZeit = new Date(jetzt.toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
-  const aktuelleMinuten = berlinZeit.getHours() * 60 + berlinZeit.getMinutes();
-  const tag = berlinZeit.getDay(); // 0=So, 6=Sa
+  const berlin = berlinZeitKomponenten(jetzt);
+  const aktuelleMinuten = berlin.stunde * 60 + berlin.minute;
+
+  // Hilfsfunktion: Slot an einem bestimmten Berlin-Tag (relativ zum heutigen) erzeugen
+  const slotAnTag = (tageVerschiebung: number, slot: AnrufZeitslot): Date => {
+    // Tag-Verschiebung über UTC-Datum, dann zurück in Berlin-Komponenten
+    const verschoben = new Date(Date.UTC(berlin.jahr, berlin.monat, berlin.tag + tageVerschiebung));
+    const verschobenKomp = berlinZeitKomponenten(verschoben);
+    return berlinDatumErzeugen(
+      verschobenKomp.jahr,
+      verschobenKomp.monat,
+      verschobenKomp.tag,
+      slot.stunde,
+      slot.minute,
+    );
+  };
 
   // Wochenende → Montag erste Zeit
-  if (tag === 0 || tag === 6) {
-    const tageAbstand = tag === 0 ? 1 : 2;
-    const montag = new Date(jetzt);
-    montag.setDate(montag.getDate() + tageAbstand);
-    montag.setHours(slots[0].stunde, slots[0].minute, 0, 0);
-    return zufallsVerzoegerungAnwenden(montag, verzoegerung);
+  if (berlin.wochentag === 0 || berlin.wochentag === 6) {
+    const tageAbstand = berlin.wochentag === 0 ? 1 : 2;
+    return zufallsVerzoegerungAnwenden(slotAnTag(tageAbstand, slots[0]), verzoegerung);
   }
 
   // Nach 21:00 → morgen erste Zeit
   if (aktuelleMinuten >= 21 * 60) {
-    const morgen = new Date(jetzt);
-    morgen.setDate(morgen.getDate() + 1);
-    morgen.setHours(slots[0].stunde, slots[0].minute, 0, 0);
-    return zufallsVerzoegerungAnwenden(morgen, verzoegerung);
+    return zufallsVerzoegerungAnwenden(slotAnTag(1, slots[0]), verzoegerung);
   }
 
   // Vor 09:00 → heute erste Zeit
   if (aktuelleMinuten < 9 * 60) {
-    const heute = new Date(jetzt);
-    heute.setHours(slots[0].stunde, slots[0].minute, 0, 0);
-    return zufallsVerzoegerungAnwenden(heute, verzoegerung);
+    return zufallsVerzoegerungAnwenden(slotAnTag(0, slots[0]), verzoegerung);
   }
 
-  // Nächste verfügbare Anrufzeit finden
+  // Nächste verfügbare Anrufzeit heute finden
   for (const slot of slots) {
     const slotMinuten = slot.stunde * 60 + slot.minute;
     if (slotMinuten > aktuelleMinuten) {
-      const ziel = new Date(jetzt);
-      ziel.setHours(slot.stunde, slot.minute, 0, 0);
-      return zufallsVerzoegerungAnwenden(ziel, verzoegerung);
+      return zufallsVerzoegerungAnwenden(slotAnTag(0, slot), verzoegerung);
     }
   }
 
   // Alle Zeiten heute vorbei → morgen erste Zeit
-  const morgen = new Date(jetzt);
-  morgen.setDate(morgen.getDate() + 1);
-  morgen.setHours(slots[0].stunde, slots[0].minute, 0, 0);
-  return zufallsVerzoegerungAnwenden(morgen, verzoegerung);
+  return zufallsVerzoegerungAnwenden(slotAnTag(1, slots[0]), verzoegerung);
 }
 
 /**
