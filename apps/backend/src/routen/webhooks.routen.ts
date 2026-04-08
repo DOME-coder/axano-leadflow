@@ -517,7 +517,7 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
       await prisma.leadAktivitaet.create({
         data: {
           leadId: lead.id,
-          typ: 'termin_storniert',
+          typ: 'status_geaendert',
           beschreibung: 'Termin über Calendly storniert',
         },
       });
