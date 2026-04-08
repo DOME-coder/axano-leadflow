@@ -68,3 +68,16 @@ export function benutzeKundeAktualisieren() {
     },
   });
 }
+
+export function benutzeKundeLoeschen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/kunden/${id}`);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kunden'] });
+    },
+  });
+}

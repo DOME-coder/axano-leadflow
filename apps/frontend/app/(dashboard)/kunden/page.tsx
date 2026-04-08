@@ -2,15 +2,32 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Building2, Search, ArrowUpRight } from 'lucide-react';
-import { benutzeKunden, benutzeKundeErstellen } from '@/hooks/benutze-kunden';
+import { Plus, Building2, Search, ArrowUpRight, Trash2 } from 'lucide-react';
+import { benutzeKunden, benutzeKundeErstellen, benutzeKundeLoeschen } from '@/hooks/benutze-kunden';
 import { useToastStore } from '@/stores/toast-store';
 
 export default function KundenSeite() {
   const [suche, setSuche] = useState('');
   const { data, isLoading } = benutzeKunden({ suche: suche || undefined });
   const kundeErstellen = benutzeKundeErstellen();
+  const kundeLoeschen = benutzeKundeLoeschen();
   const { toastAnzeigen } = useToastStore();
+
+  const handleLoeschen = async (e: React.MouseEvent, id: string, name: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm(`Kunde "${name}" wirklich löschen?`)) return;
+    try {
+      await kundeLoeschen.mutateAsync(id);
+      toastAnzeigen('erfolg', 'Kunde gelöscht');
+    } catch (fehler: any) {
+      const nachricht =
+        fehler?.response?.data?.fehler ||
+        fehler?.response?.data?.message ||
+        'Kunde konnte nicht gelöscht werden';
+      toastAnzeigen('fehler', nachricht);
+    }
+  };
 
   const [neuerKunde, setNeuerKunde] = useState(false);
   const [name, setName] = useState('');
@@ -125,8 +142,17 @@ export default function KundenSeite() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {data?.eintraege.map((kunde) => (
             <Link key={kunde.id} href={`/kunden/${kunde.id}`}
-              className="ax-karte rounded-xl p-5 hover:shadow-sm hover:border-axano-orange/30 transition-all group block">
-              <div className="flex items-start justify-between mb-2">
+              className="ax-karte rounded-xl p-5 hover:shadow-sm hover:border-axano-orange/30 transition-all group block relative">
+              <button
+                onClick={(e) => handleLoeschen(e, kunde.id, kunde.name)}
+                disabled={kundeLoeschen.isPending}
+                title="Kunde löschen"
+                aria-label={`Kunde ${kunde.name} löschen`}
+                className="absolute top-3 right-3 p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <div className="flex items-start justify-between mb-2 pr-8">
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold ax-titel text-sm truncate group-hover:text-axano-orange transition-colors">
                     {kunde.name}
