@@ -65,6 +65,20 @@ export function benutzeLeadAktualisieren() {
   });
 }
 
+export function benutzeLeadLoeschen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/leads/${id}`);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+    },
+  });
+}
+
 export function benutzeNotizHinzufuegen() {
   const queryClient = useQueryClient();
   return useMutation({

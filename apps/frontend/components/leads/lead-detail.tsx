@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink } from 'lucide-react';
-import { benutzeLead, benutzeNotizHinzufuegen } from '@/hooks/benutze-leads';
+import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink, Trash2 } from 'lucide-react';
+import { benutzeLead, benutzeNotizHinzufuegen, benutzeLeadLoeschen } from '@/hooks/benutze-leads';
 import { statusFarbeErmitteln } from '@/lib/typen';
+import { useToastStore } from '@/stores/toast-store';
 
 interface LeadDetailProps {
   leadId: string;
@@ -13,12 +14,33 @@ interface LeadDetailProps {
 export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
   const { data: lead, isLoading } = benutzeLead(leadId);
   const notizHinzufuegen = benutzeNotizHinzufuegen();
+  const leadLoeschen = benutzeLeadLoeschen();
+  const { toastAnzeigen } = useToastStore();
   const [neueNotiz, setNeueNotiz] = useState('');
 
   const notizAbsenden = async () => {
     if (!neueNotiz.trim()) return;
     await notizHinzufuegen.mutateAsync({ leadId, inhalt: neueNotiz.trim() });
     setNeueNotiz('');
+  };
+
+  const loeschenKlick = async () => {
+    const name = lead
+      ? `${(lead as { vorname?: string }).vorname || ''} ${(lead as { nachname?: string }).nachname || ''}`.trim() || 'diesen Lead'
+      : 'diesen Lead';
+    if (!confirm(`Lead "${name}" wirklich löschen?`)) return;
+    try {
+      await leadLoeschen.mutateAsync(leadId);
+      toastAnzeigen('erfolg', 'Lead gelöscht');
+      onSchliessen();
+    } catch (fehler: unknown) {
+      const f = fehler as { response?: { data?: { fehler?: string; message?: string } } };
+      const nachricht =
+        f?.response?.data?.fehler ||
+        f?.response?.data?.message ||
+        'Lead konnte nicht gelöscht werden';
+      toastAnzeigen('fehler', nachricht);
+    }
   };
 
   return (
@@ -31,12 +53,23 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b ax-rahmen-leicht">
           <h2 className="font-bold ax-titel">Lead-Details</h2>
-          <button
-            onClick={onSchliessen}
-            className="p-1.5 rounded-lg ax-text-tertiaer ax-hover hover:text-[var(--text)] transition-all"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={loeschenKlick}
+              disabled={leadLoeschen.isPending || !lead}
+              title="Lead löschen"
+              aria-label="Lead löschen"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all disabled:opacity-40"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onSchliessen}
+              className="p-1.5 rounded-lg ax-text-tertiaer ax-hover hover:text-[var(--text)] transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {isLoading ? (

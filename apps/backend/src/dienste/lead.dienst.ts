@@ -236,6 +236,17 @@ export async function leadAbrufen(id: string) {
   };
 }
 
+export async function leadLoeschen(id: string) {
+  const lead = await prisma.lead.findUnique({ where: { id } });
+  if (!lead || lead.geloescht) {
+    throw new AppFehler('Lead nicht gefunden', 404, 'NICHT_GEFUNDEN');
+  }
+  await prisma.lead.update({
+    where: { id },
+    data: { geloescht: true, geloeschtAm: new Date() },
+  });
+}
+
 export async function leadAktualisieren(
   id: string,
   daten: { status?: string; zugewiesenAn?: string | null },

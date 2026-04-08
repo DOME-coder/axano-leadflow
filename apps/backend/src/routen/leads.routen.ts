@@ -5,6 +5,7 @@ import {
   leadsAuflisten,
   leadAbrufen,
   leadAktualisieren,
+  leadLoeschen,
   leadNotizHinzufuegen,
   leadsNachStatus,
 } from '../dienste/lead.dienst';
@@ -71,6 +72,16 @@ leadsRouter.patch('/:id', async (req: Request, res: Response, next: NextFunction
       req.benutzer!.benutzerId
     );
     res.json({ erfolg: true, daten: lead });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// DELETE /api/v1/leads/:id (Soft-Delete)
+leadsRouter.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await leadLoeschen(req.params.id);
+    res.json({ erfolg: true });
   } catch (fehler) {
     next(fehler);
   }
