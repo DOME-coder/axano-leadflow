@@ -418,8 +418,8 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
     const body = req.body;
     const eventTyp = body.event;
 
-    // Nur Terminbuchungen verarbeiten
-    if (eventTyp !== 'invitee.created') {
+    // Nur Terminbuchungen und Stornierungen verarbeiten
+    if (eventTyp !== 'invitee.created' && eventTyp !== 'invitee.canceled') {
       res.status(200).json({ erfolg: true });
       return;
     }
@@ -429,6 +429,64 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
     const name = payload?.name as string | undefined;
     const scheduledAt = payload?.scheduled_event?.start_time as string | undefined;
 
+    // Meeting-Link und Telefon aus Payload extrahieren
+    const meetingLink = payload?.scheduled_event?.location?.join_url as string | undefined;
+    const questionsAndAnswers = payload?.questions_and_answers as Array<{ answer: string }> | undefined;
+    const telefonAusFormular = questionsAndAnswers?.[0]?.answer?.replace(/\s+/g, '') || undefined;
+
+    // Lead zuerst ermitteln, weil wir den kundeId für die Signature-Prüfung brauchen
+    let lead = email ? await prisma.lead.findFirst({
+      where: { geloescht: false, email },
+      orderBy: { erstelltAm: 'desc' },
+      include: { kampagne: { select: { kundeId: true } } },
+    }) : null;
+
+    if (!lead && telefonAusFormular) {
+      lead = await prisma.lead.findFirst({
+        where: { geloescht: false, telefon: { contains: telefonAusFormular.replace(/^\+49/, '').replace(/^0/, '') } },
+        orderBy: { erstelltAm: 'desc' },
+        include: { kampagne: { select: { kundeId: true } } },
+      });
+    }
+
+    // Signaturverifikation: Calendly-Format ist "t=<unix>,v1=<hex>"
+    // HMAC-Berechnung über "<t>.<rohpayload>" mit dem signing_key des Kunden
+    const calendlyKonfig = await integrationKonfigurationLesenMitFallback(
+      'calendly',
+      lead?.kampagne?.kundeId || null,
+    );
+    const signingKey = calendlyKonfig?.webhook_signing_key;
+    if (signingKey) {
+      const signaturHeader = typeof req.headers['calendly-webhook-signature'] === 'string'
+        ? (req.headers['calendly-webhook-signature'] as string)
+        : '';
+      const teile = Object.fromEntries(
+        signaturHeader.split(',').map((p) => p.split('=').map((s) => s.trim())),
+      ) as Record<string, string>;
+      const t = teile.t;
+      const v1 = teile.v1;
+      if (!t || !v1) {
+        logger.warn('Calendly Webhook: Signatur-Header fehlt oder ungültig');
+        res.status(401).json({ erfolg: false, fehler: 'Ungültige Signatur' });
+        return;
+      }
+      const crypto = await import('crypto');
+      const erwartet = crypto.createHmac('sha256', signingKey)
+        .update(`${t}.${JSON.stringify(req.body)}`, 'utf8')
+        .digest('hex');
+      try {
+        const ok = crypto.timingSafeEqual(Buffer.from(v1, 'hex'), Buffer.from(erwartet, 'hex'));
+        if (!ok) {
+          logger.warn('Calendly Webhook: Signatur stimmt nicht überein');
+          res.status(401).json({ erfolg: false, fehler: 'Ungültige Signatur' });
+          return;
+        }
+      } catch {
+        res.status(401).json({ erfolg: false, fehler: 'Ungültige Signatur' });
+        return;
+      }
+    }
+
     logger.info(`Calendly Webhook: ${eventTyp}, E-Mail: ${email}`);
 
     if (!email && !name) {
@@ -436,22 +494,36 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
       return;
     }
 
-    // Meeting-Link und Telefon aus Payload extrahieren
-    const meetingLink = payload?.scheduled_event?.location?.join_url as string | undefined;
-    const questionsAndAnswers = payload?.questions_and_answers as Array<{ answer: string }> | undefined;
-    const telefonAusFormular = questionsAndAnswers?.[0]?.answer?.replace(/\s+/g, '') || undefined;
-
-    // Lead suchen: 1. Per E-Mail, 2. Per Telefon (Fallback)
-    let lead = email ? await prisma.lead.findFirst({
-      where: { geloescht: false, email },
-      orderBy: { erstelltAm: 'desc' },
-    }) : null;
-
-    if (!lead && telefonAusFormular) {
-      lead = await prisma.lead.findFirst({
-        where: { geloescht: false, telefon: { contains: telefonAusFormular.replace(/^\+49/, '').replace(/^0/, '') } },
-        orderBy: { erstelltAm: 'desc' },
+    // Stornierung: Termin entfernen + Status zurücksetzen
+    if (eventTyp === 'invitee.canceled' && lead) {
+      const externeId = payload?.uri as string | undefined;
+      if (externeId) {
+        await prisma.termin.deleteMany({
+          where: { leadId: lead.id, externeId },
+        });
+      }
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: { status: 'Termin storniert' },
       });
+      await prisma.leadStatusHistorie.create({
+        data: {
+          leadId: lead.id,
+          alterStatus: lead.status,
+          neuerStatus: 'Termin storniert',
+          grund: 'Calendly-Stornierung',
+        },
+      });
+      await prisma.leadAktivitaet.create({
+        data: {
+          leadId: lead.id,
+          typ: 'termin_storniert',
+          beschreibung: 'Termin über Calendly storniert',
+        },
+      });
+      logger.info(`Calendly: Lead ${lead.id} → Termin storniert`);
+      res.status(200).json({ erfolg: true });
+      return;
     }
 
     if (lead) {
@@ -471,18 +543,47 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
       });
 
       // Termin speichern (mit Meeting-Link)
-      await prisma.termin.create({
+      const beginn = scheduledAt ? new Date(scheduledAt) : new Date();
+      const ende = payload?.scheduled_event?.end_time ? new Date(payload.scheduled_event.end_time) : new Date(beginn.getTime() + 30 * 60 * 1000);
+      const termin = await prisma.termin.create({
         data: {
           leadId: lead.id,
           kampagneId: lead.kampagneId,
           titel: `Calendly-Termin: ${name || email}`,
-          beginnAm: scheduledAt ? new Date(scheduledAt) : new Date(),
-          endeAm: payload?.scheduled_event?.end_time ? new Date(payload.scheduled_event.end_time) : undefined,
+          beginnAm: beginn,
+          endeAm: ende,
           quelle: 'calendly',
           externeId: payload?.uri as string || undefined,
           meetingLink: meetingLink || undefined,
         },
       });
+
+      // Versuch: Termin in den Kalender des Kunden eintragen (Google/Outlook)
+      try {
+        const { kalenderAnbieterErstellen } = await import('../dienste/kalender.dienst');
+        const anbieter = await kalenderAnbieterErstellen(lead.kampagne?.kundeId || null);
+        if (anbieter) {
+          const ergebnis = await anbieter.terminErstellen({
+            titel: `Beratungstermin: ${name || email}`,
+            beschreibung: `Termin über Calendly gebucht.\n\nLead: ${name || '—'}\nE-Mail: ${email || '—'}\nTelefon: ${lead.telefon || '—'}${meetingLink ? `\n\nMeeting-Link: ${meetingLink}` : ''}`,
+            beginn,
+            ende,
+            teilnehmerEmail: email,
+          });
+          // Speichere die externe Kalender-ID zusätzlich
+          if (ergebnis.externeId) {
+            await prisma.termin.update({
+              where: { id: termin.id },
+              data: { meetingLink: ergebnis.meetingLink || meetingLink || undefined },
+            });
+          }
+          logger.info(`Calendly: Termin auch in Kunden-Kalender eingetragen (Lead ${lead.id})`);
+        } else {
+          logger.info(`Calendly: Kein Kunden-Kalender verbunden für Lead ${lead.id} – nur DB-Eintrag`);
+        }
+      } catch (kalenderFehler) {
+        logger.error('Calendly: Kalender-Eintragung fehlgeschlagen', { leadId: lead.id, error: kalenderFehler });
+      }
 
       await prisma.leadAktivitaet.create({
         data: {

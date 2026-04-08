@@ -66,23 +66,30 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
 
         {werte.vapiAktiviert && (
           <div className="mt-4 space-y-3 pl-1">
+            <div className="text-xs ax-text-sekundaer bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+              <strong>Tipp:</strong> Lass die Felder leer, um die VAPI-Daten aus der
+              Kunden-Integration zu nutzen (Kunde&nbsp;→&nbsp;Integrationen&nbsp;→&nbsp;VAPI).
+              So kann jeder Kunde seinen eigenen VAPI-Assistenten und seine eigene
+              Telefonnummer verwenden. Werte hier überschreiben die Kunden-Integration nur
+              für diese eine Kampagne.
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium ax-text">Assistant ID *</label>
+                <label className="text-xs font-medium ax-text">Assistant ID (optional)</label>
                 <input
                   value={werte.vapiAssistantId}
                   onChange={(e) => onAendern('vapiAssistantId', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
-                  placeholder="asst_xxx"
+                  placeholder="aus Kunden-Integration oder asst_xxx"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium ax-text">Telefonnummer-ID *</label>
+                <label className="text-xs font-medium ax-text">Telefonnummer-ID (optional)</label>
                 <input
                   value={werte.vapiPhoneNumberId}
                   onChange={(e) => onAendern('vapiPhoneNumberId', e.target.value)}
                   className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
-                  placeholder="phone_xxx"
+                  placeholder="aus Kunden-Integration oder phone_xxx"
                 />
               </div>
             </div>

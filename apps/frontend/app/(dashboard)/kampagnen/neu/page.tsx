@@ -230,16 +230,10 @@ function NeueKampagneInhalt() {
       setFehler('Bitte wählen Sie einen Trigger-Typ');
       return;
     }
-    if (aktuellerSchritt === 3 && kanalWerte.vapiAktiviert) {
-      if (!kanalWerte.vapiAssistantId.trim()) {
-        setFehler('VAPI Assistant ID ist erforderlich');
-        return;
-      }
-      if (!kanalWerte.vapiPhoneNumberId.trim()) {
-        setFehler('VAPI Telefonnummer-ID ist erforderlich');
-        return;
-      }
-    }
+    // VAPI-Validierung entfernt: Assistant-ID und Phone-Number-ID können
+    // jetzt auch aus der Kunden-Integration kommen (Multi-Tenant). Wenn sie
+    // hier leer bleiben und der Kunde keine VAPI-Integration hat, schlägt
+    // der erste Anruf mit einer klaren Fehlermeldung fehl.
     setAktuellerSchritt((s) => Math.min(s + 1, schritte.length - 1));
   };
 

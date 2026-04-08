@@ -25,7 +25,16 @@ export async function anrufSequenzStarten(leadId: string, kampagneId: string) {
   const kampagne = await prisma.kampagne.findUnique({ where: { id: kampagneId } });
   if (!kampagne) return;
 
-  if (!kampagne.vapiAktiviert || !kampagne.vapiAssistantId) return;
+  if (!kampagne.vapiAktiviert) return;
+
+  // Assistant-ID kann entweder in der Kampagne oder in der Kunden-VAPI-Integration stehen
+  if (!kampagne.vapiAssistantId) {
+    const vapiKonfig = await integrationKonfigurationLesenMitFallback('vapi', kampagne.kundeId);
+    if (!vapiKonfig?.assistant_id) {
+      logger.warn(`Anruf-Sequenz übersprungen: Keine VAPI-Assistant-ID für Lead ${leadId}`);
+      return;
+    }
+  }
 
   logger.info(`Anruf-Sequenz gestartet für Lead ${leadId}`);
   await naechstenAnrufPlanen(leadId, kampagneId, 1);
@@ -60,7 +69,8 @@ export async function naechstenAnrufPlanen(
         kampagne.benachrichtigungEmail,
         lead,
         'Nicht erreichbar',
-        `Alle ${kampagne.maxAnrufVersuche} Anrufversuche erschöpft.`
+        `Alle ${kampagne.maxAnrufVersuche} Anrufversuche erschöpft.`,
+        kampagne.kundeId
       );
     }
     return;
@@ -397,12 +407,24 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       ...(kampagne.vapiVoicemailNachricht ? { voicemailMessage: kampagne.vapiVoicemailNachricht } : {}),
     };
 
+    // VAPI-Konfiguration ermitteln: erst Kunden-Integration, dann Kampagnen-Felder
+    // (so kann ein Kunde seinen eigenen VAPI-Assistant + Phone-Number nutzen)
+    const vapiKonfig = await integrationKonfigurationLesenMitFallback('vapi', kampagne.kundeId);
+    const assistantId = vapiKonfig?.assistant_id || kampagne.vapiAssistantId!;
+    const phoneNumberId = vapiKonfig?.phone_number_id || kampagne.vapiPhoneNumberId!;
+
+    if (!assistantId || !phoneNumberId) {
+      throw new Error(
+        'VAPI Assistant-ID oder Phone-Number-ID fehlt. Bitte in der Kunden-Integration oder Kampagne konfigurieren.'
+      );
+    }
+
     // VAPI-Anruf starten
     const kundeName = [lead.vorname, lead.nachname].filter(Boolean).join(' ');
     const callId = await vapiAnrufStarten(
       lead.telefon!,
-      kampagne.vapiAssistantId!,
-      kampagne.vapiPhoneNumberId!,
+      assistantId,
+      phoneNumberId,
       kundeName,
       {
         leadId: lead.id,
@@ -640,7 +662,8 @@ export async function anrufErgebnisVerarbeiten(
           kampagne.benachrichtigungEmail,
           versuch.lead,
           neuerStatus,
-          analyse.zusammenfassung
+          analyse.zusammenfassung,
+          kampagne.kundeId
         );
       }
       emitAnrufErgebnis(versuch.kampagneId, versuch.leadId, versuch.versuchNummer, analyse.ergebnis);
@@ -757,10 +780,10 @@ export async function followUpDirektSenden(
     nichtInteressiert: 'Nicht interessiert',
   };
 
-  // E-Mail senden (wenn aktiviert + Template vorhanden)
+  // E-Mail senden (wenn aktiviert + Template vorhanden) – nutzt SMTP des Kunden
   if (kampagne.emailAktiviert && emailTemplateId && lead.email) {
     try {
-      await emailMitTemplateSenden(emailTemplateId, lead);
+      await emailMitTemplateSenden(emailTemplateId, lead, undefined, lead.kampagne?.kundeId || null);
       await aktivitaetLoggen(leadId, 'email_gesendet',
         `Follow-up E-Mail gesendet: ${grundBezeichnung[grund]}`);
     } catch (fehler) {
@@ -940,18 +963,21 @@ async function aktivitaetLoggen(
 
 /**
  * Sendet eine Team-Benachrichtigungs-Email bei Lead-Endstatus.
+ * Nutzt SMTP des Kunden falls konfiguriert, sonst globalen Fallback.
  */
 async function teamBenachrichtigungSenden(
   empfaengerEmail: string,
   lead: { vorname: string | null; nachname: string | null; email: string | null; telefon: string | null; anrufVersucheAnzahl: number },
   neuerStatus: string,
-  zusammenfassung?: string | null
+  zusammenfassung?: string | null,
+  kundeId?: string | null
 ) {
   const leadName = [lead.vorname, lead.nachname].filter(Boolean).join(' ') || 'Unbekannt';
 
   try {
     await emailSenden({
       an: empfaengerEmail,
+      kundeId,
       betreff: `LeadFlow: ${leadName} – ${neuerStatus}`,
       html: `
         <div style="font-family: 'Manrope', Arial, sans-serif; max-width: 600px; margin: 0 auto;">

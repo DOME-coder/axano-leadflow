@@ -44,7 +44,7 @@ const INTEGRATIONEN_DEFINITIONEN = [
   {
     name: 'vapi',
     typ: 'VAPI AI-Anrufe',
-    felder: ['api_schluessel'],
+    felder: ['api_schluessel', 'assistant_id', 'phone_number_id'],
     sensibleFelder: ['api_schluessel'],
   },
   {

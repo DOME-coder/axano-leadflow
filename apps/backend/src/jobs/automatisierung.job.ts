@@ -28,7 +28,7 @@ export function workerStarten() {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
       include: {
-        kampagne: { select: { name: true } },
+        kampagne: { select: { name: true, kundeId: true } },
         zugewiesener: { select: { vorname: true, nachname: true } },
         felddaten: { include: { feld: { select: { feldname: true } } } },
       },
@@ -92,7 +92,12 @@ export function workerStarten() {
         }
         const templateId = konfig.templateId as string | undefined;
         if (templateId) {
-          await emailMitTemplateSenden(templateId, lead, konfig.anEmail as string | undefined);
+          await emailMitTemplateSenden(
+            templateId,
+            lead,
+            konfig.anEmail as string | undefined,
+            lead.kampagne?.kundeId || null,
+          );
           await aktivitaetProtokollieren(leadId, 'email_gesendet', 'E-Mail gesendet via Automatisierung');
         }
         break;
