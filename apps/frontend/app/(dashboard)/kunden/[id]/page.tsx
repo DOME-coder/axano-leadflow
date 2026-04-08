@@ -1,19 +1,48 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Save, Plus, Megaphone, Users, TrendingUp, Settings, ExternalLink, Trash2, RefreshCw } from 'lucide-react';
 import { benutzeKunde, benutzeKundeAktualisieren } from '@/hooks/benutze-kunden';
 import { benutzeKundenIntegrationen, benutzeKundenIntegrationSpeichern, benutzeKundenIntegrationLoeschen, benutzeGoogleOAuthUrl, benutzeOutlookOAuthUrl } from '@/hooks/benutze-kunden-integrationen';
+import { useToastStore } from '@/stores/toast-store';
 
 export default function KundeDetailSeite({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data: kunde, isLoading } = benutzeKunde(id);
   const aktualisieren = benutzeKundeAktualisieren();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { toastAnzeigen } = useToastStore();
 
   const [bearbeiten, setBearbeiten] = useState(false);
   const [form, setForm] = useState({ name: '', kontaktperson: '', email: '', telefon: '', branche: '', notizen: '' });
   const [erfolg, setErfolg] = useState('');
+
+  // OAuth-Callback-Feedback: nach Redirect von Google/Outlook
+  useEffect(() => {
+    if (!searchParams) return;
+    const google = searchParams.get('google_calendar');
+    const outlook = searchParams.get('outlook_calendar');
+    const grund = searchParams.get('grund');
+
+    if (google === 'verbunden') {
+      toastAnzeigen('erfolg', 'Google Calendar erfolgreich verbunden');
+    } else if (google === 'fehler') {
+      toastAnzeigen('fehler', `Google Calendar konnte nicht verbunden werden${grund ? `: ${grund}` : ''}`);
+    } else if (outlook === 'verbunden') {
+      toastAnzeigen('erfolg', 'Outlook Calendar erfolgreich verbunden');
+    } else if (outlook === 'fehler') {
+      toastAnzeigen('fehler', `Outlook Calendar konnte nicht verbunden werden${grund ? `: ${grund}` : ''}`);
+    }
+
+    // Query-Params nach dem Anzeigen aufräumen, damit der Toast bei Reload nicht nochmal kommt
+    if (google || outlook) {
+      router.replace(`/kunden/${id}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const bearbeitenStarten = () => {
     if (kunde) {

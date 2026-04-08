@@ -22,6 +22,7 @@ import { benutzerRouter } from './routen/benutzer.routen';
 import { anrufeRouter, kampagneAnrufeRouter } from './routen/anrufe.routen';
 import { testRouter } from './routen/test.routen';
 import { kundenIntegrationenRouter } from './routen/kunden-integrationen.routen';
+import { oauthRouter } from './routen/oauth.routen';
 import { socketServerInitialisieren } from './websocket/socket.handler';
 import { workerStarten } from './jobs/automatisierung.job';
 import { emailPollingStarten } from './jobs/email-polling.job';
@@ -100,6 +101,7 @@ app.use('/api/v1/benutzer', benutzerRouter);
 app.use('/api/v1/kampagnen/:kampagneId/anrufe', kampagneAnrufeRouter);
 app.use('/api/v1/anrufe', anrufeRouter);
 app.use('/api/v1/kunden/:kundeId/integrationen', kundenIntegrationenRouter);
+app.use('/api/v1/oauth', oauthRouter);
 app.use('/api/v1/test', testRouter);
 app.use('/api/v1/webhooks', webhooksRouter);
 

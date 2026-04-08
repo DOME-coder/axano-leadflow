@@ -30,9 +30,9 @@ Bevor du den ersten Kunden onboarden kannst, müssen zwei OAuth-Apps registriert
 6. **APIs & Services → Credentials** → **+ Create Credentials → OAuth client ID**:
    - Application type: **Web application**
    - Name: `Axano LeadFlow Backend`
-   - **Authorized redirect URIs** → **Add URI**:
+   - **Authorized redirect URIs** → **Add URI** (genau diese eine URI, gilt für ALLE Kunden):
      ```
-     https://leadflow.axano.com/api/v1/kunden/integrationen/google/oauth-callback
+     https://leadflow.axano.com/api/v1/oauth/google/callback
      ```
    - **Create**
 7. Im Popup erscheinen **Client ID** und **Client secret** — beide kopieren
@@ -46,9 +46,9 @@ Bevor du den ersten Kunden onboarden kannst, müssen zwei OAuth-Apps registriert
 3. **+ New registration**:
    - Name: `Axano LeadFlow`
    - Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**
-   - Redirect URI: **Web** + URL:
+   - Redirect URI: **Web** + URL (genau diese eine URI, gilt für ALLE Kunden):
      ```
-     https://leadflow.axano.com/api/v1/kunden/integrationen/outlook/oauth-callback
+     https://leadflow.axano.com/api/v1/oauth/outlook/callback
      ```
    - **Register**
 4. Auf der App-Seite die **Application (client) ID** kopieren
