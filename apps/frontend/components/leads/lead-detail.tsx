@@ -110,6 +110,52 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
               </div>
             )}
 
+            {/* Weitere Daten aus dem Webhook (nicht als Kampagnenfeld definiert) */}
+            {(() => {
+              const rohdaten = (lead as { rohdaten?: Record<string, unknown> | null }).rohdaten;
+              if (!rohdaten || typeof rohdaten !== 'object') return null;
+
+              // Standardfelder, die schon in der Kontaktdaten-Sektion stehen
+              const standardSchluessel = new Set([
+                'vorname', 'first_name', 'firstname', 'name',
+                'nachname', 'last_name', 'lastname', 'surname',
+                'email', 'e_mail', 'mail', 'email_address',
+                'telefon', 'phone', 'phone_number', 'tel', 'telefonnummer', 'mobile',
+              ]);
+
+              // Schlüssel, die schon als definiertes Kampagnenfeld oben angezeigt werden
+              const definierteFeldnamen = new Set(Object.keys(lead.felder ?? {}));
+
+              const weitere = Object.entries(rohdaten).filter(
+                ([key, value]) =>
+                  !standardSchluessel.has(key) &&
+                  !definierteFeldnamen.has(key) &&
+                  value !== null &&
+                  value !== undefined &&
+                  value !== ''
+              );
+
+              if (weitere.length === 0) return null;
+
+              return (
+                <div className="px-6 py-4 border-b ax-rahmen-leicht">
+                  <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-2">
+                    Weitere Daten
+                  </h4>
+                  <div className="space-y-1.5">
+                    {weitere.map(([schluessel, wert]) => (
+                      <div key={schluessel} className="flex justify-between text-sm gap-3">
+                        <span className="ax-text-sekundaer break-words">{schluessel}</span>
+                        <span className="font-medium ax-titel text-right break-words">
+                          {typeof wert === 'object' ? JSON.stringify(wert) : String(wert)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Status-Historie */}
             {lead.statusHistorie && lead.statusHistorie.length > 0 && (
               <div className="px-6 py-4 border-b ax-rahmen-leicht">
