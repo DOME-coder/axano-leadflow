@@ -8,14 +8,18 @@ import { useUiStore } from '@/stores/ui-store';
 export function benutzeKampagnen(filter?: { status?: string }) {
   const kundeId = useUiStore((s) => s.ausgewaehlterKundeId);
   return useQuery({
-    queryKey: ['kampagnen', filter, kundeId],
+    queryKey: ['kampagnen', filter?.status ?? null, kundeId ?? null],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filter?.status) params.set('status', filter.status);
       if (kundeId) params.set('kunde_id', kundeId);
-      const { data } = await apiClient.get(`/kampagnen?${params}`);
+      const queryString = params.toString();
+      const url = queryString ? `/kampagnen?${queryString}` : '/kampagnen';
+      const { data } = await apiClient.get(url);
       return data.daten as PaginierteAntwort<Kampagne>;
     },
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
