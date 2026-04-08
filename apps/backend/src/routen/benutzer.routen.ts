@@ -79,6 +79,55 @@ const benutzerAktualisierenSchema = z.object({
   aktiv: z.boolean().optional(),
 });
 
+// PATCH /api/v1/benutzer/profil (eigene Daten)
+// WICHTIG: Muss vor /:id registriert werden, sonst fängt /:id diese Anfrage ab
+benutzerRouter.patch('/profil', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const schema = z.object({
+      vorname: z.string().min(1).optional(),
+      nachname: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+    });
+    const daten = schema.parse(req.body);
+    const benutzer = await prisma.benutzer.update({
+      where: { id: req.benutzer!.benutzerId },
+      data: daten,
+      select: { id: true, email: true, vorname: true, nachname: true, rolle: true },
+    });
+    res.json({ erfolg: true, daten: benutzer });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// PATCH /api/v1/benutzer/passwort (eigenes Passwort)
+// WICHTIG: Muss vor /:id registriert werden, sonst fängt /:id diese Anfrage ab
+benutzerRouter.patch('/passwort', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const schema = z.object({
+      altesPasswort: z.string().min(1),
+      neuesPasswort: z.string().min(8, 'Neues Passwort muss mindestens 8 Zeichen lang sein'),
+    });
+    const { altesPasswort, neuesPasswort } = schema.parse(req.body);
+
+    const benutzer = await prisma.benutzer.findUnique({ where: { id: req.benutzer!.benutzerId } });
+    if (!benutzer) throw new AppFehler('Benutzer nicht gefunden', 404, 'NICHT_GEFUNDEN');
+
+    const korrekt = await bcrypt.compare(altesPasswort, benutzer.passwortHash);
+    if (!korrekt) throw new AppFehler('Altes Passwort ist falsch', 400, 'PASSWORT_FALSCH');
+
+    const neuerHash = await bcrypt.hash(neuesPasswort, 12);
+    await prisma.benutzer.update({
+      where: { id: req.benutzer!.benutzerId },
+      data: { passwortHash: neuerHash },
+    });
+
+    res.json({ erfolg: true, nachricht: 'Passwort erfolgreich geändert' });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
 // PATCH /api/v1/benutzer/:id (nur Admin)
 benutzerRouter.patch('/:id', nurAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -113,53 +162,6 @@ benutzerRouter.delete('/:id', nurAdmin, async (req: Request, res: Response, next
       data: { aktiv: false },
     });
     res.json({ erfolg: true, nachricht: 'Benutzer deaktiviert' });
-  } catch (fehler) {
-    next(fehler);
-  }
-});
-
-// PATCH /api/v1/benutzer/profil (eigene Daten)
-benutzerRouter.patch('/profil', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const schema = z.object({
-      vorname: z.string().min(1).optional(),
-      nachname: z.string().min(1).optional(),
-      email: z.string().email().optional(),
-    });
-    const daten = schema.parse(req.body);
-    const benutzer = await prisma.benutzer.update({
-      where: { id: req.benutzer!.benutzerId },
-      data: daten,
-      select: { id: true, email: true, vorname: true, nachname: true, rolle: true },
-    });
-    res.json({ erfolg: true, daten: benutzer });
-  } catch (fehler) {
-    next(fehler);
-  }
-});
-
-// PATCH /api/v1/benutzer/passwort (eigenes Passwort)
-benutzerRouter.patch('/passwort', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const schema = z.object({
-      altesPasswort: z.string().min(1),
-      neuesPasswort: z.string().min(8, 'Neues Passwort muss mindestens 8 Zeichen lang sein'),
-    });
-    const { altesPasswort, neuesPasswort } = schema.parse(req.body);
-
-    const benutzer = await prisma.benutzer.findUnique({ where: { id: req.benutzer!.benutzerId } });
-    if (!benutzer) throw new AppFehler('Benutzer nicht gefunden', 404, 'NICHT_GEFUNDEN');
-
-    const korrekt = await bcrypt.compare(altesPasswort, benutzer.passwortHash);
-    if (!korrekt) throw new AppFehler('Altes Passwort ist falsch', 400, 'PASSWORT_FALSCH');
-
-    const neuerHash = await bcrypt.hash(neuesPasswort, 12);
-    await prisma.benutzer.update({
-      where: { id: req.benutzer!.benutzerId },
-      data: { passwortHash: neuerHash },
-    });
-
-    res.json({ erfolg: true, nachricht: 'Passwort erfolgreich geändert' });
   } catch (fehler) {
     next(fehler);
   }
