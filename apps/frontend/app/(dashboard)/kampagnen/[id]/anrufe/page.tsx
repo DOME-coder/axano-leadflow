@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowLeft, Phone, Play, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { benutzeKampagne } from '@/hooks/benutze-kampagnen';
 import { benutzeAnrufe, benutzeAnrufeStarten } from '@/hooks/benutze-anrufe';
+import { useToastStore } from '@/stores/toast-store';
 import { useState } from 'react';
 
 const statusIcons: Record<string, typeof Clock> = {
@@ -30,7 +31,26 @@ export default function AnrufeSeite({ params }: { params: { id: string } }) {
   const { data: kampagne } = benutzeKampagne(id);
   const { data: anrufeData, isLoading } = benutzeAnrufe(id);
   const starten = benutzeAnrufeStarten();
+  const { toastAnzeigen } = useToastStore();
   const [transkriptId, setTranskriptId] = useState<string | null>(null);
+
+  const alleAnrufen = async () => {
+    try {
+      const ergebnis = await starten.mutateAsync(id);
+      if (ergebnis.daten.gestartet > 0) {
+        toastAnzeigen('erfolg', ergebnis.nachricht);
+      } else {
+        toastAnzeigen('info', ergebnis.nachricht);
+      }
+    } catch (fehler: unknown) {
+      const f = fehler as { response?: { data?: { fehler?: string; message?: string } } };
+      const nachricht =
+        f?.response?.data?.fehler ||
+        f?.response?.data?.message ||
+        'Anruf-Sequenz konnte nicht gestartet werden';
+      toastAnzeigen('fehler', nachricht);
+    }
+  };
 
   const transkriptAnruf = anrufeData?.eintraege.find((a) => a.id === transkriptId);
 
@@ -48,12 +68,12 @@ export default function AnrufeSeite({ params }: { params: { id: string } }) {
           </div>
         </div>
         <button
-          onClick={() => starten.mutate(id)}
+          onClick={alleAnrufen}
           disabled={starten.isPending}
           className="bg-axano-orange hover:bg-orange-600 text-white font-semibold px-5 py-2.5 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
         >
           <Play className="w-4 h-4" />
-          Alle neuen Leads anrufen
+          {starten.isPending ? 'Wird gestartet...' : 'Alle offenen Leads anrufen'}
         </button>
       </div>
 

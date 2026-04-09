@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../datenbank/prisma.client';
 import { authentifizierung } from '../middleware/authentifizierung';
-import { anrufSequenzStarten } from '../dienste/anruf.dienst';
+import { anrufSequenzStarten, sofortigenAnrufPlanen } from '../dienste/anruf.dienst';
 
 export const anrufeRouter = Router();
 anrufeRouter.use(authentifizierung);
@@ -37,37 +37,107 @@ kampagneAnrufeRouter.get('/', async (req: Request, res: Response, next: NextFunc
   }
 });
 
-// POST /api/v1/kampagnen/:kampagneId/anrufe/starten – Manuell Sequenz für alle neuen Leads starten
+// POST /api/v1/kampagnen/:kampagneId/anrufe/starten – Manuell Sequenz für alle Leads starten
+// die noch kein Endstatus haben und noch keinen aktiven Anrufversuch.
 kampagneAnrufeRouter.post('/starten', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { kampagneId } = req.params;
 
-    const neueLeads = await prisma.lead.findMany({
+    // Alle Leads mit Telefon, die noch nicht finalisiert wurden
+    const beendendeStatus = ['Termin gebucht', 'Nicht interessiert', 'Falsche Nummer', 'Nicht erreichbar', 'WhatsApp erhalten'];
+    const kandidaten = await prisma.lead.findMany({
       where: {
         kampagneId,
-        status: 'Neu',
         geloescht: false,
         telefon: { not: null },
+        status: { notIn: beendendeStatus },
+      },
+      include: {
+        anrufVersuche: {
+          where: { status: { in: ['geplant', 'laeuft'] } },
+          select: { id: true },
+        },
       },
     });
 
     let gestartet = 0;
-    for (const lead of neueLeads) {
-      // Prüfe ob bereits Anrufversuche existieren
-      const bestehend = await prisma.anrufVersuch.findFirst({
-        where: { leadId: lead.id },
-      });
-
-      if (!bestehend) {
-        await anrufSequenzStarten(lead.id, kampagneId);
-        gestartet++;
+    let uebersprungen = 0;
+    for (const lead of kandidaten) {
+      if (lead.anrufVersuche.length > 0) {
+        // Bereits ein geplanter oder laufender Anruf — nicht doppelt planen
+        uebersprungen++;
+        continue;
       }
+      await anrufSequenzStarten(lead.id, kampagneId);
+      gestartet++;
     }
+
+    const nachricht = gestartet === 0
+      ? (kandidaten.length === 0
+          ? 'Keine Leads mit Telefonnummer in offenem Status gefunden.'
+          : `Keine neuen Anrufe geplant – ${uebersprungen} Leads haben bereits geplante oder laufende Anrufe.`)
+      : `${gestartet} Anruf-Sequenz(en) gestartet${uebersprungen > 0 ? ` (${uebersprungen} übersprungen)` : ''}`;
 
     res.json({
       erfolg: true,
-      daten: { gestartet, gesamt: neueLeads.length },
-      nachricht: `${gestartet} Anruf-Sequenzen gestartet`,
+      daten: { gestartet, uebersprungen, gesamt: kandidaten.length },
+      nachricht,
+    });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// POST /api/v1/leads/:leadId/anruf-sofort – Einzelnen Lead SOFORT anrufen (Test-Modus)
+// Umgeht Zeitslot-Routing, ignoriert evtl. geplante Anrufe und startet binnen 5 Sek.
+anrufeRouter.post('/lead/:leadId/sofort', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const lead = await prisma.lead.findUnique({
+      where: { id: req.params.leadId },
+      include: { kampagne: { select: { id: true, vapiAktiviert: true } } },
+    });
+
+    if (!lead || lead.geloescht) {
+      res.status(404).json({ erfolg: false, fehler: 'Lead nicht gefunden' });
+      return;
+    }
+    if (!lead.telefon) {
+      res.status(400).json({ erfolg: false, fehler: 'Lead hat keine Telefonnummer' });
+      return;
+    }
+    if (!lead.kampagne?.vapiAktiviert) {
+      res.status(400).json({ erfolg: false, fehler: 'VAPI ist für diese Kampagne nicht aktiviert' });
+      return;
+    }
+
+    // Laufende oder geplante Anrufe zuerst abbrechen
+    await prisma.anrufVersuch.updateMany({
+      where: { leadId: lead.id, status: { in: ['geplant', 'laeuft'] } },
+      data: { status: 'fehler', fehlerNachricht: 'Durch manuellen Sofort-Anruf ersetzt' },
+    });
+
+    const letzterVersuch = await prisma.anrufVersuch.findFirst({
+      where: { leadId: lead.id },
+      orderBy: { versuchNummer: 'desc' },
+      select: { versuchNummer: true },
+    });
+    const naechsteVersuchNummer = (letzterVersuch?.versuchNummer || 0) + 1;
+
+    // Lead-Status zuruecksetzen falls nicht im Endzustand, damit der Worker ihn nicht ueberspringt
+    const beendendeStatus = ['Termin gebucht', 'Nicht interessiert', 'Falsche Nummer', 'Nicht erreichbar', 'WhatsApp erhalten'];
+    if (beendendeStatus.includes(lead.status)) {
+      res.status(400).json({
+        erfolg: false,
+        fehler: `Lead hat Endstatus "${lead.status}". Bitte Status manuell aendern, bevor ein neuer Anruf gestartet wird.`,
+      });
+      return;
+    }
+
+    await sofortigenAnrufPlanen(lead.id, lead.kampagne.id, naechsteVersuchNummer);
+
+    res.json({
+      erfolg: true,
+      nachricht: `Sofortiger Anruf geplant (startet binnen 5 Sekunden, Versuch #${naechsteVersuchNummer})`,
     });
   } catch (fehler) {
     next(fehler);

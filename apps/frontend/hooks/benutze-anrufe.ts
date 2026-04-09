@@ -43,10 +43,32 @@ export function benutzeAnrufeStarten() {
   return useMutation({
     mutationFn: async (kampagneId: string) => {
       const { data } = await apiClient.post(`/kampagnen/${kampagneId}/anrufe/starten`);
-      return data;
+      return data as {
+        erfolg: boolean;
+        daten: { gestartet: number; uebersprungen: number; gesamt: number };
+        nachricht: string;
+      };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['anrufe'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+    },
+  });
+}
+
+export function benutzeLeadSofortAnrufen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (leadId: string) => {
+      const { data } = await apiClient.post(`/anrufe/lead/${leadId}/sofort`);
+      return data as { erfolg: boolean; nachricht: string };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['anrufe'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['lead'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
     },
   });
 }

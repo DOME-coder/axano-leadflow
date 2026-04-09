@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink, Trash2 } from 'lucide-react';
+import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink, Trash2, PhoneCall } from 'lucide-react';
 import { benutzeLead, benutzeNotizHinzufuegen, benutzeLeadLoeschen } from '@/hooks/benutze-leads';
+import { benutzeLeadSofortAnrufen } from '@/hooks/benutze-anrufe';
 import { statusFarbeErmitteln } from '@/lib/typen';
 import { useToastStore } from '@/stores/toast-store';
 
@@ -15,8 +16,23 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
   const { data: lead, isLoading } = benutzeLead(leadId);
   const notizHinzufuegen = benutzeNotizHinzufuegen();
   const leadLoeschen = benutzeLeadLoeschen();
+  const sofortAnrufen = benutzeLeadSofortAnrufen();
   const { toastAnzeigen } = useToastStore();
   const [neueNotiz, setNeueNotiz] = useState('');
+
+  const sofortAnrufenKlick = async () => {
+    try {
+      const ergebnis = await sofortAnrufen.mutateAsync(leadId);
+      toastAnzeigen('erfolg', ergebnis.nachricht);
+    } catch (fehler: unknown) {
+      const f = fehler as { response?: { data?: { fehler?: string; message?: string } } };
+      const nachricht =
+        f?.response?.data?.fehler ||
+        f?.response?.data?.message ||
+        'Sofort-Anruf konnte nicht gestartet werden';
+      toastAnzeigen('fehler', nachricht);
+    }
+  };
 
   const notizAbsenden = async () => {
     if (!neueNotiz.trim()) return;
@@ -54,6 +70,16 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
         <div className="flex items-center justify-between px-6 py-4 border-b ax-rahmen-leicht">
           <h2 className="font-bold ax-titel">Lead-Details</h2>
           <div className="flex items-center gap-1">
+            <button
+              onClick={sofortAnrufenKlick}
+              disabled={sofortAnrufen.isPending || !lead || !(lead as { telefon?: string }).telefon}
+              title="Sofort anrufen (Test-Modus, umgeht Zeitslot)"
+              aria-label="Lead sofort anrufen"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-axano-orange hover:bg-orange-600 text-white text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              {sofortAnrufen.isPending ? 'Startet...' : 'Sofort anrufen'}
+            </button>
             <button
               onClick={loeschenKlick}
               disabled={leadLoeschen.isPending || !lead}

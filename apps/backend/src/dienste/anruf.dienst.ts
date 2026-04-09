@@ -120,18 +120,36 @@ export async function naechstenAnrufPlanen(
 }
 
 /**
- * Plant einen sofortigen Rückruf (5 Sek Delay) — für fehlerhaftes Auflegen.
+ * Plant einen sofortigen Anruf (5 Sek Delay) — fuer manuelle Tests oder
+ * fehlerhaftes Auflegen. Umgeht das Zeitslot-Routing und ruft den
+ * Lead unmittelbar an.
  */
-async function sofortigenAnrufPlanen(leadId: string, kampagneId: string, versuchNummer: number) {
+export async function sofortigenAnrufPlanen(leadId: string, kampagneId: string, versuchNummer: number) {
   const versuch = await prisma.anrufVersuch.create({
     data: { leadId, kampagneId, versuchNummer, status: 'geplant', geplantFuer: new Date() },
+  });
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { naechsterAnrufAm: new Date() },
   });
 
   await anrufQueue.add('anruf-durchfuehren', {
     anrufVersuchId: versuch.id, leadId, kampagneId,
   }, { delay: 5000, jobId: `anruf-sofort-${versuch.id}` });
 
-  logger.info(`Sofortiger Rückruf geplant (5s) für Lead ${leadId} – Versuch #${versuchNummer}`);
+  logger.info(`Sofortiger Anruf geplant (5s) für Lead ${leadId} – Versuch #${versuchNummer}`);
+
+  const io = socketServer();
+  if (io) {
+    io.to(`kampagne:${kampagneId}`).emit('anruf:geplant', {
+      leadId,
+      versuchNummer,
+      geplantFuer: new Date().toISOString(),
+    });
+  }
+
+  return versuch;
 }
 
 /**
