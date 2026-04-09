@@ -245,7 +245,7 @@ export async function kampagneInhalteGenerieren(eingabe: KiGenerierungEingabe): 
   try {
     const antwort = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [{
         role: 'user',
         content: prompt,
@@ -273,6 +273,25 @@ export async function kampagneInhalteGenerieren(eingabe: KiGenerierungEingabe): 
       // Validierung der Pflichtfelder
       if (!ergebnis.vapiPrompt || !ergebnis.emailTemplates || !ergebnis.whatsappTemplates || !ergebnis.formularfelder) {
         throw new Error('Unvollständige Antwort von Claude');
+      }
+
+      // Pruefen welche der 6 Email-Templates Claude geliefert hat (Diagnose)
+      const erwarteteTemplates = ['verpassterAnruf', 'voicemailFollowup', 'unerreichbar', 'terminBestaetigung', 'rueckruf', 'nichtInteressiert'] as const;
+      const fehlendeTemplates = erwarteteTemplates.filter((key) => {
+        const t = ergebnis.emailTemplates[key];
+        return !t || !t.betreff || !t.html;
+      });
+      if (fehlendeTemplates.length > 0) {
+        logger.warn(`Claude hat ${fehlendeTemplates.length}/6 Email-Templates ausgelassen:`, { fehlend: fehlendeTemplates });
+      } else {
+        logger.info('Claude hat alle 6 Email-Templates erfolgreich generiert');
+      }
+
+      // Stelle sicher dass jedes Template-Feld existiert (auch wenn leer), damit das Frontend nicht crasht
+      for (const key of erwarteteTemplates) {
+        if (!ergebnis.emailTemplates[key]) {
+          ergebnis.emailTemplates[key] = { betreff: '', html: '' };
+        }
       }
 
       // Defaults für neue Felder falls Claude sie auslässt
@@ -318,40 +337,27 @@ export async function kampagneInhalteMitBibliothek(
   // 1. Ähnliche Vorlagen in der Bibliothek suchen
   const vorlagen = await aehnlicheVorlagenSuchen(eingabe.branche);
 
+  // IMMER alle Felder per Claude generieren (Templates, Begruessung, Voicemail, Formularfelder)
+  // Wenn ein Bibliotheks-Treffer existiert, wird NUR der vapiPrompt aus der Bibliothek genommen
+  // — alle anderen Felder kommen frisch von Claude. So bekommt der User immer ein vollstaendiges Set.
+  const ergebnis = await kampagneInhalteGenerieren(eingabe);
+
   if (vorlagen.length > 0) {
     const vorlage = vorlagen[0];
-    logger.info(`Prompt-Bibliothek: Treffer für "${eingabe.branche}" → Vorlage "${vorlage.name}"`);
+    logger.info(`Prompt-Bibliothek: Treffer für "${eingabe.branche}" → Vorlage "${vorlage.name}" (vapiPrompt aus Bibliothek, restliche Felder frisch generiert)`);
 
-    // Bibliothek liefert nur den vapiPrompt — Rest wird trotzdem generiert
     return {
+      ...ergebnis,
       quelle: 'bibliothek',
       vorlagenId: vorlage.id,
       vorlagenBranche: vorlage.branche,
-      vapiPrompt: vorlage.vapiPrompt,
-      ersteBotschaft: '',
-      voicemailNachricht: '',
-      emailTemplates: {
-        verpassterAnruf: { betreff: '', html: '' },
-        voicemailFollowup: { betreff: '', html: '' },
-        unerreichbar: { betreff: '', html: '' },
-        terminBestaetigung: { betreff: '', html: '' },
-        rueckruf: { betreff: '', html: '' },
-        nichtInteressiert: { betreff: '', html: '' },
-      },
-      whatsappTemplates: {
-        anrufFehlgeschlagen: '',
-        unerreichbar: '',
-        nichtInteressiert: '',
-      },
-      formularfelder: [],
+      vapiPrompt: vorlage.vapiPrompt, // Bibliotheks-Prompt ueberschreibt den frisch generierten
     };
   }
 
-  // 2. Kein Treffer → KI generieren
   logger.info(`Prompt-Bibliothek: Kein Treffer für "${eingabe.branche}" → KI-Generierung`);
-  const ergebnis = await kampagneInhalteGenerieren(eingabe);
 
-  // 3. Generierten Prompt automatisch in Bibliothek speichern
+  // Generierten Prompt automatisch in Bibliothek speichern
   try {
     await promptVorlageErstellen({
       name: `${eingabe.branche} – ${eingabe.produkt || 'Standard'}`,
