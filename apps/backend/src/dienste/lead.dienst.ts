@@ -129,7 +129,11 @@ export async function leadErstellen(daten: LeadErstellen) {
   automatisierungenAusloesen(daten.kampagneId, 'lead_eingetroffen', lead.id).catch(() => {});
 
   // VAPI Anruf-Sequenz starten (wenn aktiviert)
-  if (lead.telefon && kampagne.vapiAktiviert && kampagne.vapiAssistantId) {
+  // Hinweis: Assistant-ID wird nicht mehr hier geprueft — sie kann auch aus
+  // der Kunden-Integration kommen. anrufSequenzStarten() macht den Check selbst
+  // und loggt eine Warnung wenn weder Kampagne noch Kunden-Integration einen
+  // Assistant haben.
+  if (lead.telefon && kampagne.vapiAktiviert) {
     import('./anruf.dienst').then(({ anrufSequenzStarten }) => {
       anrufSequenzStarten(lead.id, daten.kampagneId).catch((fehler) => {
         logger.error('VAPI Sequenz-Start fehlgeschlagen:', { leadId: lead.id, error: fehler });
