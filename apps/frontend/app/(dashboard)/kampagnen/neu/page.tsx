@@ -50,6 +50,9 @@ const standardKanalWerte: KanalKonfigurationWerte = {
   emailTemplateVerpasst: '',
   emailTemplateVoicemail: '',
   emailTemplateUnerreichbar: '',
+  emailTemplateTerminBestaetigung: '',
+  emailTemplateRueckruf: '',
+  emailTemplateNichtInteressiert: '',
   whatsappAktiviert: false,
   whatsappKanalId: '',
   whatsappTemplateVerpasst: '',
@@ -132,15 +135,19 @@ function NeueKampagneInhalt() {
         whatsappAktiviert: true,
       }));
 
-      // E-Mail-Templates in DB erstellen und IDs setzen
+      // E-Mail-Templates in DB erstellen und IDs setzen — eines pro Anruf-Ergebnis
       const templateIds: Record<string, string> = {};
       const templateMap = {
         verpassterAnruf: { name: `${name || branche} – Verpasster Anruf`, ...ergebnis.emailTemplates.verpassterAnruf },
         voicemailFollowup: { name: `${name || branche} – Voicemail`, ...ergebnis.emailTemplates.voicemailFollowup },
         unerreichbar: { name: `${name || branche} – Nicht erreichbar`, ...ergebnis.emailTemplates.unerreichbar },
+        terminBestaetigung: { name: `${name || branche} – Termin-Bestätigung`, ...ergebnis.emailTemplates.terminBestaetigung },
+        rueckruf: { name: `${name || branche} – Rückruf-Bestätigung`, ...ergebnis.emailTemplates.rueckruf },
+        nichtInteressiert: { name: `${name || branche} – Nicht interessiert`, ...ergebnis.emailTemplates.nichtInteressiert },
       };
 
       for (const [schluessel, daten] of Object.entries(templateMap)) {
+        if (!daten.betreff || !daten.html) continue; // Falls die KI ein Template ausgelassen hat
         try {
           const template = await templateErstellen.mutateAsync({
             name: daten.name,
@@ -158,6 +165,9 @@ function NeueKampagneInhalt() {
         emailTemplateVerpasst: templateIds.verpassterAnruf || '',
         emailTemplateVoicemail: templateIds.voicemailFollowup || '',
         emailTemplateUnerreichbar: templateIds.unerreichbar || '',
+        emailTemplateTerminBestaetigung: templateIds.terminBestaetigung || '',
+        emailTemplateRueckruf: templateIds.rueckruf || '',
+        emailTemplateNichtInteressiert: templateIds.nichtInteressiert || '',
       }));
 
       // WhatsApp-Templates speichern
@@ -281,6 +291,9 @@ function NeueKampagneInhalt() {
         emailTemplateVerpasst: kanalWerte.emailTemplateVerpasst || null,
         emailTemplateVoicemail: kanalWerte.emailTemplateVoicemail || null,
         emailTemplateUnerreichbar: kanalWerte.emailTemplateUnerreichbar || null,
+        emailTemplateTerminBestaetigung: kanalWerte.emailTemplateTerminBestaetigung || null,
+        emailTemplateRueckruf: kanalWerte.emailTemplateRueckruf || null,
+        emailTemplateNichtInteressiert: kanalWerte.emailTemplateNichtInteressiert || null,
         whatsappAktiviert: kanalWerte.whatsappAktiviert,
         whatsappKanalId: kanalWerte.whatsappKanalId || null,
         whatsappTemplateVerpasst: kanalWerte.whatsappTemplateVerpasst || null,

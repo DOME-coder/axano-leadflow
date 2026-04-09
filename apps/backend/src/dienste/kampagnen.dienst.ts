@@ -31,6 +31,9 @@ interface KampagneErstellen {
   emailTemplateVerpasst?: string | null;
   emailTemplateVoicemail?: string | null;
   emailTemplateUnerreichbar?: string | null;
+  emailTemplateTerminBestaetigung?: string | null;
+  emailTemplateRueckruf?: string | null;
+  emailTemplateNichtInteressiert?: string | null;
   whatsappTemplateVerpasst?: string | null;
   whatsappTemplateUnerreichbar?: string | null;
   whatsappTemplateNichtInteressiert?: string | null;
@@ -173,6 +176,9 @@ export async function kampagneErstellen(daten: KampagneErstellen) {
       emailTemplateVerpasst: daten.emailTemplateVerpasst,
       emailTemplateVoicemail: daten.emailTemplateVoicemail,
       emailTemplateUnerreichbar: daten.emailTemplateUnerreichbar,
+      emailTemplateTerminBestaetigung: daten.emailTemplateTerminBestaetigung,
+      emailTemplateRueckruf: daten.emailTemplateRueckruf,
+      emailTemplateNichtInteressiert: daten.emailTemplateNichtInteressiert,
       whatsappTemplateVerpasst: daten.whatsappTemplateVerpasst,
       whatsappTemplateUnerreichbar: daten.whatsappTemplateUnerreichbar,
       whatsappTemplateNichtInteressiert: daten.whatsappTemplateNichtInteressiert,
@@ -252,6 +258,9 @@ export async function kampagneAktualisieren(
     emailTemplateVerpasst?: string | null;
     emailTemplateVoicemail?: string | null;
     emailTemplateUnerreichbar?: string | null;
+    emailTemplateTerminBestaetigung?: string | null;
+    emailTemplateRueckruf?: string | null;
+    emailTemplateNichtInteressiert?: string | null;
     whatsappTemplateVerpasst?: string | null;
     whatsappTemplateUnerreichbar?: string | null;
     whatsappKanalId?: string | null;
@@ -284,6 +293,9 @@ export async function kampagneAktualisieren(
   if (daten.emailTemplateVerpasst !== undefined) updateData.emailTemplateVerpasst = daten.emailTemplateVerpasst;
   if (daten.emailTemplateVoicemail !== undefined) updateData.emailTemplateVoicemail = daten.emailTemplateVoicemail;
   if (daten.emailTemplateUnerreichbar !== undefined) updateData.emailTemplateUnerreichbar = daten.emailTemplateUnerreichbar;
+  if (daten.emailTemplateTerminBestaetigung !== undefined) updateData.emailTemplateTerminBestaetigung = daten.emailTemplateTerminBestaetigung;
+  if (daten.emailTemplateRueckruf !== undefined) updateData.emailTemplateRueckruf = daten.emailTemplateRueckruf;
+  if (daten.emailTemplateNichtInteressiert !== undefined) updateData.emailTemplateNichtInteressiert = daten.emailTemplateNichtInteressiert;
   if (daten.whatsappTemplateVerpasst !== undefined) updateData.whatsappTemplateVerpasst = daten.whatsappTemplateVerpasst;
   if (daten.whatsappTemplateUnerreichbar !== undefined) updateData.whatsappTemplateUnerreichbar = daten.whatsappTemplateUnerreichbar;
   if (daten.whatsappKanalId !== undefined) updateData.whatsappKanalId = daten.whatsappKanalId;

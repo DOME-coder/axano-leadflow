@@ -7,7 +7,7 @@ import { logger } from '../hilfsfunktionen/logger';
 interface FollowUpJobDaten {
   leadId: string;
   kampagneId: string;
-  grund: 'verpasst' | 'voicemail' | 'unerreichbar';
+  grund: 'verpasst' | 'voicemail' | 'unerreichbar' | 'nichtInteressiert' | 'terminBestaetigung' | 'rueckruf';
 }
 
 /**

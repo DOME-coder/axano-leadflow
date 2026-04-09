@@ -15,6 +15,9 @@ export interface KanalKonfigurationWerte {
   emailTemplateVerpasst: string;
   emailTemplateVoicemail: string;
   emailTemplateUnerreichbar: string;
+  emailTemplateTerminBestaetigung: string;
+  emailTemplateRueckruf: string;
+  emailTemplateNichtInteressiert: string;
   whatsappAktiviert: boolean;
   whatsappKanalId: string;
   whatsappTemplateVerpasst: string;

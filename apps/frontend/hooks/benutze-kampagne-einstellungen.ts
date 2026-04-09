@@ -15,6 +15,9 @@ interface KampagneEinstellungen {
   emailTemplateVerpasst?: string | null;
   emailTemplateVoicemail?: string | null;
   emailTemplateUnerreichbar?: string | null;
+  emailTemplateTerminBestaetigung?: string | null;
+  emailTemplateRueckruf?: string | null;
+  emailTemplateNichtInteressiert?: string | null;
   whatsappAktiviert?: boolean;
   whatsappKanalId?: string | null;
   whatsappTemplateVerpasst?: string | null;

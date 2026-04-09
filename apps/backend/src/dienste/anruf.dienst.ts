@@ -16,7 +16,13 @@ interface AnrufZeitslot {
   minute: number;
 }
 
-type FollowUpGrund = 'verpasst' | 'voicemail' | 'unerreichbar' | 'nichtInteressiert';
+type FollowUpGrund =
+  | 'verpasst'
+  | 'voicemail'
+  | 'unerreichbar'
+  | 'nichtInteressiert'
+  | 'terminBestaetigung'
+  | 'rueckruf';
 
 /**
  * Startet die Anruf-Sequenz für einen Lead.
@@ -273,10 +279,26 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       content: `\n\n# Lead Information:\n${leadInfo}`,
     };
 
-    // Aktuelle Uhrzeit als System-Message (damit die KI zeitgemäß begrüßen kann)
-    const aktuelleZeitMessage = {
+    // SPRACH-ANWEISUNG (hoechste Prioritaet, damit das LLM nicht ins Englische faellt)
+    const sprachMessage = {
       role: 'system',
-      content: `\n\n# Aktuelle Uhrzeit:\n${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`,
+      content: `# Sprach-Anweisung (HOECHSTE PRIORITAET)
+
+Du sprichst AUSSCHLIESSLICH Deutsch. Niemals Englisch, auch nicht einzelne Woerter.
+
+REGELN:
+- Datumsangaben nennst du auf Deutsch ausgeschrieben (z.B. "Donnerstag, der fuenfzehnte April" — NIEMALS "April fifteenth" oder "15.04.")
+- Uhrzeiten sagst du auf Deutsch (z.B. "vierzehn Uhr dreissig" oder "halb drei am Nachmittag")
+- Wochentage immer auf Deutsch (Montag, Dienstag, Mittwoch, Donnerstag, Freitag, Samstag, Sonntag)
+- Zahlen immer auf Deutsch
+- Falls du dich versprichst oder in eine andere Sprache rutschst, entschuldige dich kurz und wechsle sofort zurueck auf Deutsch
+- Du benutzt KEINE englischen Lehnwoerter wenn es ein deutsches Wort dafuer gibt (z.B. "Termin" statt "Appointment")`,
+    };
+
+    // DATUMS-KONTEXT (vorberechnet, damit das LLM nicht halluziniert)
+    const datumsKontextMessage = {
+      role: 'system',
+      content: datumsKontextErstellen(),
     };
 
     // Kampagnen-VAPI-Prompt als Haupt-System-Message
@@ -286,12 +308,14 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     } : null;
 
     // Bestehende Messages (Gesprächshistorie) + VAPI-Prompt + Lead-Daten + Uhrzeit zusammenführen
+    // WICHTIG: sprachMessage zuerst (hoechste Prioritaet), dann Datum, dann Kampagnen-Prompt
     const bisherMessages = (assistantOverrides?.model as Record<string, unknown> | undefined)?.messages as Array<Record<string, string>> | undefined;
     const alleMessages = [
+      sprachMessage,
+      datumsKontextMessage,
       ...(vapiPromptMessage ? [vapiPromptMessage] : []),
       ...(bisherMessages || []),
       leadInfoMessage,
-      aktuelleZeitMessage,
     ];
 
     if (!assistantOverrides) assistantOverrides = {};
@@ -318,7 +342,7 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
           parameters: {
             type: 'object',
             required: ['gewuenschteZeit'],
-            properties: { gewuenschteZeit: { type: 'string', description: 'Gewünschte Zeit im Format 2025-06-16T11:30:00' } },
+            properties: { gewuenschteZeit: { type: 'string', description: 'Gewünschte Zeit im ISO-Format YYYY-MM-DDTHH:MM:SS, z.B. 2026-04-15T14:30:00 für den fünfzehnten April um halb drei nachmittags. Nutze IMMER das aktuelle Jahr aus dem Datums-Kontext.' } },
           },
         },
         messages: [{ type: 'request-start', content: 'Eine Sekunde bitte, ich schaue gerne kurz nach, ob ein Termin frei ist.', blocking: false }],
@@ -333,7 +357,7 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
             type: 'object',
             required: ['gewuenschteZeit', 'telefonnummer', 'vorname', 'nachname'],
             properties: {
-              gewuenschteZeit: { type: 'string', description: 'Bestätigte Zeit im Format 2025-06-16T11:30:00' },
+              gewuenschteZeit: { type: 'string', description: 'Bestätigte Zeit im ISO-Format YYYY-MM-DDTHH:MM:SS, z.B. 2026-04-15T14:30:00. Nutze IMMER das aktuelle Jahr aus dem Datums-Kontext.' },
               telefonnummer: { type: 'string', description: 'Telefonnummer des Leads' },
               vorname: { type: 'string', description: 'Vorname des Leads' },
               nachname: { type: 'string', description: 'Nachname des Leads' },
@@ -668,12 +692,18 @@ export async function anrufErgebnisVerarbeiten(
     await aktivitaetLoggen(versuch.leadId, 'anruf_abgeschlossen',
       `Anruf #${versuch.versuchNummer}: ${analyse.verdict} → Status "${neuerStatus}"`);
 
-    // Bei Endstatus: Follow-up senden + Team-Benachrichtigung + Sequenz beenden
+    // Bei Endstatus: passende Follow-up-Mail senden + Team-Benachrichtigung + Sequenz beenden
     if (['interessiert', 'nicht_interessiert', 'falsche_nummer'].includes(analyse.ergebnis)) {
-      // Bei "Nicht interessiert": Follow-up WhatsApp/Email senden
-      if (analyse.ergebnis === 'nicht_interessiert') {
+      // Status-spezifische Follow-up-Mail
+      if (analyse.ergebnis === 'interessiert') {
+        // Termin gebucht → Bestaetigungs-Mail mit Calendly-Link + Zusammenfassung
+        await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, 'terminBestaetigung');
+      } else if (analyse.ergebnis === 'nicht_interessiert') {
+        // Nicht interessiert → freundliche Abschluss-Mail
         await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, 'nichtInteressiert');
       }
+      // Bei "falsche_nummer" keine Mail an den Lead — die Adresse koennte falsch sein
+
       // Team-Benachrichtigung senden
       if (kampagne.benachrichtigungEmail) {
         await teamBenachrichtigungSenden(
@@ -706,8 +736,11 @@ export async function anrufErgebnisVerarbeiten(
     await aktivitaetLoggen(versuch.leadId, 'anruf_abgeschlossen',
       `Anruf #${versuch.versuchNummer}: ${analyse.verdict} – nächster Versuch wird geplant`);
 
-    // Follow-up E-Mail + WhatsApp nach erstem gescheiterten Versuch
-    if (versuch.versuchNummer === 1) {
+    // Follow-up E-Mail (status-spezifisch). rueckruf_geplant bekommt sofort eine Mail,
+    // voicemail/verpasst nur nach dem ersten Versuch.
+    if (analyse.ergebnis === 'rueckruf_geplant') {
+      await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, 'rueckruf');
+    } else if (versuch.versuchNummer === 1) {
       const followUpGrund: FollowUpGrund = analyse.ergebnis === 'voicemail' ? 'voicemail' : 'verpasst';
       await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, followUpGrund);
     }
@@ -739,7 +772,7 @@ function emitAnrufErgebnis(kampagneId: string, leadId: string, versuchNummer: nu
 async function followUpSenden(
   leadId: string,
   kampagneId: string,
-  kampagne: { emailAktiviert: boolean; whatsappAktiviert: boolean; emailTemplateVerpasst: string | null; emailTemplateVoicemail: string | null; emailTemplateUnerreichbar: string | null; whatsappTemplateVerpasst: string | null; whatsappTemplateUnerreichbar: string | null; whatsappTemplateNichtInteressiert: string | null; whatsappKanalId: string | null },
+  kampagne: KampagneFuerFollowUp,
   grund: FollowUpGrund
 ) {
   // Zeitfenster-Prüfung (Mo-Fr 09:00-20:00)
@@ -758,11 +791,29 @@ async function followUpSenden(
 }
 
 /**
+ * Gemeinsamer Typ fuer alle Stellen die Follow-ups triggern.
+ */
+type KampagneFuerFollowUp = {
+  emailAktiviert: boolean;
+  whatsappAktiviert: boolean;
+  emailTemplateVerpasst: string | null;
+  emailTemplateVoicemail: string | null;
+  emailTemplateUnerreichbar: string | null;
+  emailTemplateTerminBestaetigung: string | null;
+  emailTemplateRueckruf: string | null;
+  emailTemplateNichtInteressiert: string | null;
+  whatsappTemplateVerpasst: string | null;
+  whatsappTemplateUnerreichbar: string | null;
+  whatsappTemplateNichtInteressiert: string | null;
+  whatsappKanalId: string | null;
+};
+
+/**
  * Sendet Follow-up direkt (ohne Zeitfenster-Prüfung). Wird vom Worker aufgerufen.
  */
 export async function followUpDirektSenden(
   leadId: string,
-  kampagne: { emailAktiviert: boolean; whatsappAktiviert: boolean; emailTemplateVerpasst: string | null; emailTemplateVoicemail: string | null; emailTemplateUnerreichbar: string | null; whatsappTemplateVerpasst: string | null; whatsappTemplateUnerreichbar: string | null; whatsappTemplateNichtInteressiert: string | null; whatsappKanalId: string | null },
+  kampagne: KampagneFuerFollowUp,
   grund: FollowUpGrund
 ) {
   const lead = await prisma.lead.findUnique({
@@ -776,12 +827,15 @@ export async function followUpDirektSenden(
 
   if (!lead) return;
 
-  // Template-IDs nach Grund auswählen
+  // Template-IDs nach Grund auswählen — jeder Grund hat sein eigenes Template
+  // mit Fallback auf das Unerreichbar-Template falls das spezifische fehlt
   const emailTemplateId: string | null = {
     verpasst: kampagne.emailTemplateVerpasst,
     voicemail: kampagne.emailTemplateVoicemail,
     unerreichbar: kampagne.emailTemplateUnerreichbar,
-    nichtInteressiert: kampagne.emailTemplateUnerreichbar, // Fallback auf Unerreichbar-Template
+    nichtInteressiert: kampagne.emailTemplateNichtInteressiert || kampagne.emailTemplateUnerreichbar,
+    terminBestaetigung: kampagne.emailTemplateTerminBestaetigung,
+    rueckruf: kampagne.emailTemplateRueckruf || kampagne.emailTemplateVerpasst,
   }[grund];
 
   const whatsappTemplateId: string | null = {
@@ -789,6 +843,8 @@ export async function followUpDirektSenden(
     voicemail: null,
     unerreichbar: kampagne.whatsappTemplateUnerreichbar,
     nichtInteressiert: kampagne.whatsappTemplateNichtInteressiert,
+    terminBestaetigung: null,
+    rueckruf: null,
   }[grund];
 
   const grundBezeichnung: Record<FollowUpGrund, string> = {
@@ -796,14 +852,24 @@ export async function followUpDirektSenden(
     voicemail: 'Voicemail',
     unerreichbar: 'Nicht erreichbar',
     nichtInteressiert: 'Nicht interessiert',
+    terminBestaetigung: 'Termin-Bestaetigung',
+    rueckruf: 'Rueckruf-Bestaetigung',
   };
 
   // E-Mail senden (wenn aktiviert + Template vorhanden) – nutzt SMTP des Kunden
-  if (kampagne.emailAktiviert && emailTemplateId && lead.email) {
+  // Diagnose-Logging: stille Skips sind frueher unbemerkt geblieben, jetzt explizit
+  if (!kampagne.emailAktiviert) {
+    logger.info(`Follow-up "${grund}" uebersprungen: emailAktiviert=false (Lead ${leadId})`);
+  } else if (!lead.email) {
+    logger.info(`Follow-up "${grund}" uebersprungen: Lead hat keine E-Mail-Adresse (Lead ${leadId})`);
+  } else if (!emailTemplateId) {
+    logger.warn(`Follow-up "${grund}" uebersprungen: kein E-Mail-Template fuer diesen Grund hinterlegt (Kampagne pruefen, Lead ${leadId})`);
+  } else {
     try {
       await emailMitTemplateSenden(emailTemplateId, lead, undefined, lead.kampagne?.kundeId || null);
       await aktivitaetLoggen(leadId, 'email_gesendet',
         `Follow-up E-Mail gesendet: ${grundBezeichnung[grund]}`);
+      logger.info(`Follow-up E-Mail "${grund}" erfolgreich gesendet an ${lead.email} (Lead ${leadId})`);
     } catch (fehler) {
       logger.error('Follow-up E-Mail fehlgeschlagen:', { leadId, grund, error: fehler });
     }
@@ -1015,4 +1081,75 @@ async function teamBenachrichtigungSenden(
   } catch (fehler) {
     logger.error('Team-Benachrichtigung fehlgeschlagen:', { empfaengerEmail, fehler });
   }
+}
+
+/**
+ * Erzeugt einen ausfuehrlichen Datums-Kontext fuer das LLM, damit es
+ * relative Datumsangaben ("morgen", "naechste Woche") in konkrete Daten
+ * aufloesen kann ohne zu halluzinieren. Alles in Berlin-Zeit.
+ */
+function datumsKontextErstellen(): string {
+  const wochentage = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+  const monate = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+  const jetzt = new Date();
+  const heute = berlinZeitKomponenten(jetzt);
+
+  // Hilfsfunktion: Datum X Tage nach heute formatieren
+  const tagOffset = (offset: number): { wochentag: string; iso: string; deutsch: string } => {
+    const d = new Date(Date.UTC(heute.jahr, heute.monat, heute.tag + offset));
+    const k = berlinZeitKomponenten(d);
+    return {
+      wochentag: wochentage[k.wochentag],
+      iso: `${k.jahr}-${String(k.monat + 1).padStart(2, '0')}-${String(k.tag).padStart(2, '0')}`,
+      deutsch: `${wochentage[k.wochentag]}, der ${k.tag}. ${monate[k.monat]} ${k.jahr}`,
+    };
+  };
+
+  // Berechne "naechster Montag", "naechster Dienstag", ... immer in der NAECHSTEN Woche (>= 7 Tage entfernt)
+  const naechsteWocheTag = (zielWochentag: number): { iso: string; deutsch: string } => {
+    let offset = 7 - heute.wochentag + zielWochentag;
+    if (offset < 7) offset += 7;
+    return tagOffset(offset);
+  };
+
+  const heuteFmt = tagOffset(0);
+  const morgenFmt = tagOffset(1);
+  const uebermorgenFmt = tagOffset(2);
+  const inEinerWoche = tagOffset(7);
+  const inZweiWochen = tagOffset(14);
+  const naechsteWocheMo = naechsteWocheTag(1);
+  const naechsteWocheDi = naechsteWocheTag(2);
+  const naechsteWocheMi = naechsteWocheTag(3);
+  const naechsteWocheDo = naechsteWocheTag(4);
+  const naechsteWocheFr = naechsteWocheTag(5);
+
+  return `# Aktueller Zeit-Kontext (NUTZE DIESE WERTE fuer ALLE Datumsberechnungen)
+
+Heute ist ${heuteFmt.deutsch}.
+Aktuelle Uhrzeit in Berlin: ${String(heute.stunde).padStart(2, '0')}:${String(heute.minute).padStart(2, '0')} Uhr.
+
+Aktuelles Jahr: ${heute.jahr}
+Aktueller Monat: ${monate[heute.monat]}
+Aktueller Wochentag: ${wochentage[heute.wochentag]}
+
+## Relative Datumsaufloesung (verwende diese Werte 1:1 wenn der Lead solche Begriffe nutzt)
+
+- "heute" = ${heuteFmt.deutsch} (ISO: ${heuteFmt.iso})
+- "morgen" = ${morgenFmt.deutsch} (ISO: ${morgenFmt.iso})
+- "uebermorgen" = ${uebermorgenFmt.deutsch} (ISO: ${uebermorgenFmt.iso})
+- "in einer Woche" = ${inEinerWoche.deutsch} (ISO: ${inEinerWoche.iso})
+- "in zwei Wochen" = ${inZweiWochen.deutsch} (ISO: ${inZweiWochen.iso})
+- "naechsten Montag" = ${naechsteWocheMo.deutsch} (ISO: ${naechsteWocheMo.iso})
+- "naechsten Dienstag" = ${naechsteWocheDi.deutsch} (ISO: ${naechsteWocheDi.iso})
+- "naechsten Mittwoch" = ${naechsteWocheMi.deutsch} (ISO: ${naechsteWocheMi.iso})
+- "naechsten Donnerstag" = ${naechsteWocheDo.deutsch} (ISO: ${naechsteWocheDo.iso})
+- "naechsten Freitag" = ${naechsteWocheFr.deutsch} (ISO: ${naechsteWocheFr.iso})
+
+## ISO-Format fuer Tool-Aufrufe (kalenderPruefen, terminBuchen)
+
+Wenn du die Tools aufrufst, MUSST du das Format YYYY-MM-DDTHH:MM:SS verwenden.
+Beispiel fuer morgen um halb drei nachmittags: ${morgenFmt.iso}T14:30:00
+
+WICHTIG: Das aktuelle Jahr ist ${heute.jahr}, NICHT 2024 oder 2025. Alle Termine fallen in ${heute.jahr} (oder spaeter).`;
 }

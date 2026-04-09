@@ -28,6 +28,9 @@ export interface KiGenerierungErgebnis {
     verpassterAnruf: { betreff: string; html: string };
     voicemailFollowup: { betreff: string; html: string };
     unerreichbar: { betreff: string; html: string };
+    terminBestaetigung: { betreff: string; html: string };
+    rueckruf: { betreff: string; html: string };
+    nichtInteressiert: { betreff: string; html: string };
   };
   whatsappTemplates: {
     anrufFehlgeschlagen: string;
@@ -182,11 +185,17 @@ Der vapiPrompt MUSS folgende Sektionen enthalten:
 - Freundlich, einladend zum Rückruf
 - Ca. 3-4 Sätze
 
-### Anforderungen an emailTemplates:
+### Anforderungen an emailTemplates (6 Templates, eines pro Anruf-Ergebnis):
 - Professionelles HTML mit Inline-Styles
 - Variable {{vorname}} muss in allen Templates vorkommen
 - Passend zur Branche und zum Ton
-- 3 Templates: verpassterAnruf, voicemailFollowup, unerreichbar
+- Jedes Template hat einen klar unterschiedlichen Zweck:
+  - **verpassterAnruf**: Lead nicht erreicht (Versuch 1) — "Wir haben gerade angerufen, melden uns wieder"
+  - **voicemailFollowup**: Mailbox erreicht — "Haben Ihnen eine Nachricht hinterlassen, melden uns nochmal"
+  - **unerreichbar**: Alle Versuche erschoepft — "Letzter Versuch, hier ist unser Calendly-Link {{calendly_link}}"
+  - **terminBestaetigung**: Termin wurde im Anruf gebucht — "Vielen Dank, ich freue mich auf unser Gespraech am [Termin]" (ohne Calendly-Link, der Termin steht ja schon)
+  - **rueckruf**: Lead hat um Rueckruf gebeten — "Vielen Dank fuer dein Interesse, wir rufen wie besprochen zurueck"
+  - **nichtInteressiert**: Lead hat im Anruf abgelehnt — "Schade, falls du es dir anders ueberlegst, sind wir hier" (sehr freundlich, kein Druck)
 
 ### Anforderungen an whatsappTemplates:
 - Kurze, freundliche Texte
@@ -210,7 +219,10 @@ Der vapiPrompt MUSS folgende Sektionen enthalten:
   "emailTemplates": {
     "verpassterAnruf": { "betreff": "[Betreff]", "html": "[HTML]" },
     "voicemailFollowup": { "betreff": "[Betreff]", "html": "[HTML]" },
-    "unerreichbar": { "betreff": "[Betreff]", "html": "[HTML]" }
+    "unerreichbar": { "betreff": "[Betreff]", "html": "[HTML]" },
+    "terminBestaetigung": { "betreff": "[Betreff]", "html": "[HTML]" },
+    "rueckruf": { "betreff": "[Betreff]", "html": "[HTML]" },
+    "nichtInteressiert": { "betreff": "[Betreff]", "html": "[HTML]" }
   },
   "whatsappTemplates": {
     "anrufFehlgeschlagen": "[Text mit {{vorname}}]",
@@ -322,6 +334,9 @@ export async function kampagneInhalteMitBibliothek(
         verpassterAnruf: { betreff: '', html: '' },
         voicemailFollowup: { betreff: '', html: '' },
         unerreichbar: { betreff: '', html: '' },
+        terminBestaetigung: { betreff: '', html: '' },
+        rueckruf: { betreff: '', html: '' },
+        nichtInteressiert: { betreff: '', html: '' },
       },
       whatsappTemplates: {
         anrufFehlgeschlagen: '',

@@ -63,6 +63,9 @@ export interface Kampagne {
   emailTemplateVerpasst: string | null;
   emailTemplateVoicemail: string | null;
   emailTemplateUnerreichbar: string | null;
+  emailTemplateTerminBestaetigung: string | null;
+  emailTemplateRueckruf: string | null;
+  emailTemplateNichtInteressiert: string | null;
   whatsappTemplateVerpasst: string | null;
   whatsappTemplateUnerreichbar: string | null;
   whatsappTemplateNichtInteressiert: string | null;
@@ -224,6 +227,9 @@ export interface KiGenerierungErgebnis {
     verpassterAnruf: { betreff: string; html: string };
     voicemailFollowup: { betreff: string; html: string };
     unerreichbar: { betreff: string; html: string };
+    terminBestaetigung: { betreff: string; html: string };
+    rueckruf: { betreff: string; html: string };
+    nichtInteressiert: { betreff: string; html: string };
   };
   whatsappTemplates: {
     anrufFehlgeschlagen: string;
