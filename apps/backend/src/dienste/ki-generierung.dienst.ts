@@ -236,88 +236,149 @@ Der vapiPrompt MUSS folgende Sektionen enthalten:
 }
 
 /**
- * Generiert alle Kampagnen-Inhalte mit Claude AI.
+ * Extrahiert JSON aus einer Claude-Antwort (entfernt Text drumherum).
+ */
+function jsonAusAntwortExtrahieren(text: string): string {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) return text.substring(start, end + 1);
+  return text;
+}
+
+/**
+ * Generiert alle Kampagnen-Inhalte mit Claude AI (2-Call-Strategie).
+ *
+ * Call 1: VAPI-Prompt + Formularfelder + Begruessung + Voicemail + WhatsApp-Templates
+ * Call 2: Alle 6 E-Mail-Templates separat (mit voller Aufmerksamkeit)
+ *
+ * So hat Claude genug Platz fuer beides, und die Templates werden zuverlaessig komplett geliefert.
  */
 export async function kampagneInhalteGenerieren(eingabe: KiGenerierungEingabe): Promise<KiGenerierungErgebnis> {
   const client = await claudeClientErstellen();
   const prompt = vapiGenerierungsPromptBauen(eingabe);
 
   try {
-    const antwort = await client.messages.create({
+    // ── CALL 1: Prompt + Felder + WhatsApp ──
+    logger.info('KI-Generierung Call 1/2: VAPI-Prompt, Felder, WhatsApp...');
+    const antwort1 = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 16000,
-      messages: [{
-        role: 'user',
-        content: prompt,
-      }],
+      max_tokens: 12000,
+      messages: [{ role: 'user', content: prompt }],
     });
 
-    const textBlock = antwort.content.find((block) => block.type === 'text');
-    if (!textBlock || textBlock.type !== 'text') {
-      throw new Error('Claude hat keine Text-Antwort zurückgegeben');
-    }
+    const text1 = antwort1.content.find((b) => b.type === 'text');
+    if (!text1 || text1.type !== 'text') throw new Error('Claude Call 1: Keine Text-Antwort');
 
-    const rohText = textBlock.text.trim();
+    const json1 = JSON.parse(jsonAusAntwortExtrahieren(text1.text.trim()));
+    if (!json1.vapiPrompt) throw new Error('Claude Call 1: vapiPrompt fehlt');
 
-    // JSON extrahieren (falls Claude Text drumherum schreibt)
-    let jsonText = rohText;
-    const jsonStart = rohText.indexOf('{');
-    const jsonEnd = rohText.lastIndexOf('}');
-    if (jsonStart >= 0 && jsonEnd > jsonStart) {
-      jsonText = rohText.substring(jsonStart, jsonEnd + 1);
-    }
+    const kiName = eingabe.kiName || 'Ihr KI-Assistent';
 
-    try {
-      const ergebnis = JSON.parse(jsonText) as KiGenerierungErgebnis;
+    // Defaults fuer optionale Felder
+    const ergebnis: KiGenerierungErgebnis = {
+      vapiPrompt: json1.vapiPrompt,
+      ersteBotschaft: json1.ersteBotschaft || `Hallo, hier ist ${kiName}. Spreche ich mit {{vorname}} {{nachname}}?`,
+      voicemailNachricht: json1.voicemailNachricht || `Guten Tag, hier ist ${kiName}. Du hattest dich ueber unsere Anzeige eingetragen. Ich wollte die Daten kurz mit dir durchgehen und einen Termin vereinbaren. Ich freue mich auf deinen Rueckruf!`,
+      emailTemplates: {
+        verpassterAnruf: { betreff: '', html: '' },
+        voicemailFollowup: { betreff: '', html: '' },
+        unerreichbar: { betreff: '', html: '' },
+        terminBestaetigung: { betreff: '', html: '' },
+        rueckruf: { betreff: '', html: '' },
+        nichtInteressiert: { betreff: '', html: '' },
+      },
+      whatsappTemplates: {
+        anrufFehlgeschlagen: json1.whatsappTemplates?.anrufFehlgeschlagen || `Hallo {{vorname}}, wir haben versucht dich zu erreichen. Melde dich gerne zurueck!`,
+        unerreichbar: json1.whatsappTemplates?.unerreichbar || `Hallo {{vorname}}, leider konnten wir dich bisher nicht erreichen. Falls du Interesse hast, melde dich gerne jederzeit bei uns.`,
+        nichtInteressiert: json1.whatsappTemplates?.nichtInteressiert || `Hallo {{vorname}}, vielen Dank fuer dein ehrliches Feedback. Falls du es dir anders ueberlegst, sind wir jederzeit fuer dich da.`,
+      },
+      formularfelder: json1.formularfelder || [],
+    };
 
-      // Validierung der Pflichtfelder
-      if (!ergebnis.vapiPrompt || !ergebnis.emailTemplates || !ergebnis.whatsappTemplates || !ergebnis.formularfelder) {
-        throw new Error('Unvollständige Antwort von Claude');
-      }
-
-      // Pruefen welche der 6 Email-Templates Claude geliefert hat (Diagnose)
-      const erwarteteTemplates = ['verpassterAnruf', 'voicemailFollowup', 'unerreichbar', 'terminBestaetigung', 'rueckruf', 'nichtInteressiert'] as const;
-      const fehlendeTemplates = erwarteteTemplates.filter((key) => {
-        const t = ergebnis.emailTemplates[key];
-        return !t || !t.betreff || !t.html;
-      });
-      if (fehlendeTemplates.length > 0) {
-        logger.warn(`Claude hat ${fehlendeTemplates.length}/6 Email-Templates ausgelassen:`, { fehlend: fehlendeTemplates });
-      } else {
-        logger.info('Claude hat alle 6 Email-Templates erfolgreich generiert');
-      }
-
-      // Stelle sicher dass jedes Template-Feld existiert (auch wenn leer), damit das Frontend nicht crasht
-      for (const key of erwarteteTemplates) {
-        if (!ergebnis.emailTemplates[key]) {
-          ergebnis.emailTemplates[key] = { betreff: '', html: '' };
+    // Uebernimm Email-Templates aus Call 1 falls Claude sie mitgeliefert hat
+    if (json1.emailTemplates) {
+      for (const key of Object.keys(json1.emailTemplates)) {
+        const t = json1.emailTemplates[key];
+        if (t?.betreff && t?.html) {
+          (ergebnis.emailTemplates as Record<string, { betreff: string; html: string }>)[key] = t;
         }
       }
-
-      // Defaults für neue Felder falls Claude sie auslässt
-      if (!ergebnis.ersteBotschaft) {
-        const kiName = eingabe.kiName || 'Ihr KI-Assistent';
-        ergebnis.ersteBotschaft = `Hallo, hier ist ${kiName}. Spreche ich mit {{vorname}} {{nachname}}?`;
-      }
-      if (!ergebnis.voicemailNachricht) {
-        const kiName = eingabe.kiName || 'Ihr KI-Assistent';
-        ergebnis.voicemailNachricht = `Guten Tag, hier ist ${kiName}. Du hattest dich über unsere Anzeige eingetragen. Ich wollte die von dir angegebenen Daten kurz mit dir durchgehen und gemeinsam einen Termin zur persönlichen Beratung vereinbaren. Ich freue mich auf deinen Rückruf – vielen Dank und einen schönen Tag!`;
-      }
-      if (!ergebnis.whatsappTemplates.nichtInteressiert) {
-        ergebnis.whatsappTemplates.nichtInteressiert = 'Hallo {{vorname}}, vielen Dank für dein ehrliches Feedback. Falls du in Zukunft doch Interesse hast, melde dich gerne jederzeit bei uns. Wir wünschen dir alles Gute!';
-      }
-
-      logger.info('KI-Generierung erfolgreich', {
-        vapiPromptLaenge: ergebnis.vapiPrompt.length,
-        ersteBotschaftLaenge: ergebnis.ersteBotschaft.length,
-        formularfelderAnzahl: ergebnis.formularfelder.length,
-      });
-
-      return ergebnis;
-    } catch (parseError) {
-      logger.error('Claude JSON-Parsing fehlgeschlagen:', { rohText: rohText.substring(0, 200), error: parseError });
-      throw new Error('Die KI-Antwort konnte nicht verarbeitet werden. Bitte erneut versuchen.');
     }
+
+    logger.info('KI-Generierung Call 1/2 erfolgreich', {
+      vapiPromptLaenge: ergebnis.vapiPrompt.length,
+      formularfelderAnzahl: ergebnis.formularfelder.length,
+    });
+
+    // ── CALL 2: Nur die fehlenden E-Mail-Templates ──
+    const erwarteteTemplates = ['verpassterAnruf', 'voicemailFollowup', 'unerreichbar', 'terminBestaetigung', 'rueckruf', 'nichtInteressiert'] as const;
+    const fehlendeTemplates = erwarteteTemplates.filter((key) => {
+      const t = ergebnis.emailTemplates[key];
+      return !t || !t.betreff || !t.html;
+    });
+
+    if (fehlendeTemplates.length > 0) {
+      logger.info(`KI-Generierung Call 2/2: ${fehlendeTemplates.length} fehlende E-Mail-Templates nachgenerieren...`);
+
+      const templatePrompt = `Erstelle E-Mail-Templates fuer eine ${eingabe.branche}-Kampagne (Produkt: ${eingabe.produkt}).
+Ton: ${eingabe.ton}. Sprache: Deutsch. Variable {{vorname}} in allen Templates verwenden.
+${eingabe.zielgruppe ? `Zielgruppe: ${eingabe.zielgruppe}` : ''}
+
+Erstelle NUR die folgenden ${fehlendeTemplates.length} Templates als JSON:
+
+${fehlendeTemplates.map((key) => {
+  const beschreibungen: Record<string, string> = {
+    verpassterAnruf: 'Verpasster Anruf: "Wir haben gerade angerufen, melden uns wieder"',
+    voicemailFollowup: 'Voicemail: "Haben eine Nachricht hinterlassen, melden uns nochmal"',
+    unerreichbar: 'Nicht erreichbar: "Letzter Versuch, bitte melden Sie sich"',
+    terminBestaetigung: 'Termin bestaetigt: "Vielen Dank, wir freuen uns auf das Gespraech am [Termin]"',
+    rueckruf: 'Rueckruf gewuenscht: "Wir rufen wie besprochen zurueck"',
+    nichtInteressiert: 'Nicht interessiert: "Schade, falls Sie es sich anders ueberlegen — sehr freundlich, kein Druck"',
+  };
+  return `- "${key}": ${beschreibungen[key] || key}`;
+}).join('\n')}
+
+Professionelles HTML mit Inline-Styles. Jedes Template hat "betreff" und "html".
+
+Gib NUR dieses JSON zurueck:
+{
+${fehlendeTemplates.map((key) => `  "${key}": { "betreff": "[Betreff]", "html": "[HTML]" }`).join(',\n')}
+}`;
+
+      try {
+        const antwort2 = await client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 8000,
+          messages: [{ role: 'user', content: templatePrompt }],
+        });
+
+        const text2 = antwort2.content.find((b) => b.type === 'text');
+        if (text2 && text2.type === 'text') {
+          const json2 = JSON.parse(jsonAusAntwortExtrahieren(text2.text.trim()));
+          for (const key of fehlendeTemplates) {
+            const t = json2[key];
+            if (t?.betreff && t?.html) {
+              ergebnis.emailTemplates[key] = t;
+            }
+          }
+        }
+      } catch (call2Fehler) {
+        logger.warn('KI-Generierung Call 2/2 fehlgeschlagen — Templates bleiben unvollstaendig:', { error: call2Fehler });
+      }
+    }
+
+    // Finale Pruefung: wie viele Templates haben wir jetzt?
+    const finalFehlend = erwarteteTemplates.filter((key) => {
+      const t = ergebnis.emailTemplates[key];
+      return !t || !t.betreff || !t.html;
+    });
+    if (finalFehlend.length > 0) {
+      logger.warn(`KI-Generierung: ${finalFehlend.length}/6 Templates fehlen auch nach Call 2:`, { fehlend: finalFehlend });
+    } else {
+      logger.info('KI-Generierung: Alle 6 E-Mail-Templates erfolgreich generiert');
+    }
+
+    return ergebnis;
   } catch (fehler) {
     if (fehler instanceof Anthropic.APIError) {
       logger.error('Claude API-Fehler:', { status: fehler.status, message: fehler.message });

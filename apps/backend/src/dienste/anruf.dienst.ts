@@ -279,41 +279,33 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       content: `\n\n# Lead Information:\n${leadInfo}`,
     };
 
-    // SPRACH-ANWEISUNG (hoechste Prioritaet, damit das LLM nicht ins Englische faellt)
-    const sprachMessage = {
-      role: 'system',
-      content: `# Sprach-Anweisung (HOECHSTE PRIORITAET)
+    // Sprach-Anweisung + Datums-Kontext werden DIREKT in den vapiPrompt integriert
+    // (nicht als separate System-Messages, weil GPT-4o den Haupt-Prompt staerker beachtet)
+    const sprachUndDatumBlock = `
+
+# SPRACH-REGELN (IMMER EINHALTEN)
 
 Du sprichst AUSSCHLIESSLICH Deutsch. Niemals Englisch, auch nicht einzelne Woerter.
+- Datumsangaben nennst du auf Deutsch ausgeschrieben (z.B. "Donnerstag, der fuenfzehnte April")
+- NIEMALS englische Datumsformate ("April fifteenth", "March 15th")
+- Uhrzeiten auf Deutsch ("vierzehn Uhr dreissig" oder "halb drei am Nachmittag")
+- Wochentage, Monate und Zahlen IMMER auf Deutsch
+- Keine englischen Lehnwoerter wenn es ein deutsches Wort gibt ("Termin" statt "Appointment")
 
-REGELN:
-- Datumsangaben nennst du auf Deutsch ausgeschrieben (z.B. "Donnerstag, der fuenfzehnte April" — NIEMALS "April fifteenth" oder "15.04.")
-- Uhrzeiten sagst du auf Deutsch (z.B. "vierzehn Uhr dreissig" oder "halb drei am Nachmittag")
-- Wochentage immer auf Deutsch (Montag, Dienstag, Mittwoch, Donnerstag, Freitag, Samstag, Sonntag)
-- Zahlen immer auf Deutsch
-- Falls du dich versprichst oder in eine andere Sprache rutschst, entschuldige dich kurz und wechsle sofort zurueck auf Deutsch
-- Du benutzt KEINE englischen Lehnwoerter wenn es ein deutsches Wort dafuer gibt (z.B. "Termin" statt "Appointment")`,
+${datumsKontextErstellen()}`;
+
+    // Kampagnen-VAPI-Prompt mit Sprach-/Datums-Block kombinieren
+    const kombinierterPrompt = (kampagne.vapiPrompt || '') + sprachUndDatumBlock;
+
+    const vapiPromptMessage = {
+      role: 'system',
+      content: kombinierterPrompt,
     };
 
-    // DATUMS-KONTEXT (vorberechnet, damit das LLM nicht halluziniert)
-    const datumsKontextMessage = {
-      role: 'system',
-      content: datumsKontextErstellen(),
-    };
-
-    // Kampagnen-VAPI-Prompt als Haupt-System-Message
-    const vapiPromptMessage = kampagne.vapiPrompt ? {
-      role: 'system',
-      content: kampagne.vapiPrompt,
-    } : null;
-
-    // Bestehende Messages (Gesprächshistorie) + VAPI-Prompt + Lead-Daten + Uhrzeit zusammenführen
-    // WICHTIG: sprachMessage zuerst (hoechste Prioritaet), dann Datum, dann Kampagnen-Prompt
+    // Bestehende Messages (Gesprächshistorie) + kombinierter Prompt + Lead-Daten zusammenführen
     const bisherMessages = (assistantOverrides?.model as Record<string, unknown> | undefined)?.messages as Array<Record<string, string>> | undefined;
     const alleMessages = [
-      sprachMessage,
-      datumsKontextMessage,
-      ...(vapiPromptMessage ? [vapiPromptMessage] : []),
+      vapiPromptMessage,
       ...(bisherMessages || []),
       leadInfoMessage,
     ];
@@ -420,8 +412,8 @@ REGELN:
       server: { url: `${apiBaseUrl}/api/v1/webhooks/vapi/tools`, timeoutSeconds: 20 },
       model: {
         ...(assistantOverrides?.model as Record<string, unknown> | undefined),
-        provider: 'openai',
-        model: 'gpt-4o',
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-20250514',
         tools: vapiTools,
       },
       // Stimme (ElevenLabs)
