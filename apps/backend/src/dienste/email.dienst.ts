@@ -30,7 +30,7 @@ interface LeadFuerEmail {
   telefon?: string | null;
   status: string;
   erstelltAm: Date;
-  kampagne?: { name: string } | null;
+  kampagne?: { name: string; calendlyLink?: string | null } | null;
   zugewiesener?: { vorname: string; nachname?: string } | null;
   felddaten?: Array<{
     feld: { feldname: string };

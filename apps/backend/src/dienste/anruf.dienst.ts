@@ -260,28 +260,28 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       }
     }
 
-    // Lead-Daten für den Prompt zusammenstellen
+    // Lead-Daten fuer den Prompt zusammenstellen
     const leadFelddaten = await prisma.leadFelddatum.findMany({
       where: { leadId: lead.id },
       include: { feld: { select: { bezeichnung: true } } },
     });
 
-    const leadInfo = [
-      `vorname: ${lead.vorname || '—'}`,
-      `nachname: ${lead.nachname || '—'}`,
-      `email: ${lead.email || '—'}`,
-      `telefon: ${lead.telefon || '—'}`,
-      ...leadFelddaten.map((f) => `${f.feld.bezeichnung}: ${f.wert || '—'}`),
-    ].join(', ');
+    const leadDatenBlock = [
+      `- Vorname: ${lead.vorname || '—'}`,
+      `- Nachname: ${lead.nachname || '—'}`,
+      `- E-Mail: ${lead.email || '—'}`,
+      `- Telefon: ${lead.telefon || '—'}`,
+      ...leadFelddaten.map((f) => `- ${f.feld.bezeichnung}: ${f.wert || '—'}`),
+    ].join('\n');
 
-    const leadInfoMessage = {
-      role: 'system',
-      content: `\n\n# Lead Information:\n${leadInfo}`,
-    };
+    // Fix 1: Agent-Name konsistent erzwingen (ueberschreibt ggf. im Prompt hartcodierten Namen)
+    const nameBlock = kampagne.kiName
+      ? `\n\n# DEIN NAME\nDein Name ist ${kampagne.kiName}. Verwende AUSSCHLIESSLICH diesen Namen im gesamten Gespraech. Stelle dich IMMER als "${kampagne.kiName}" vor, niemals mit einem anderen Namen.`
+      : '';
 
-    // Sprach-Anweisung + Datums-Kontext werden DIREKT in den vapiPrompt integriert
-    // (nicht als separate System-Messages, weil GPT-4o den Haupt-Prompt staerker beachtet)
-    const sprachUndDatumBlock = `
+    // Alles in EINEN kombinierten Prompt (keine separaten System-Messages)
+    // So beachtet das LLM Lead-Daten, Sprach-Regeln und Name-Anweisung zuverlaessig
+    const kombinierterPrompt = `${kampagne.vapiPrompt || ''}${nameBlock}
 
 # SPRACH-REGELN (IMMER EINHALTEN)
 
@@ -292,22 +292,31 @@ Du sprichst AUSSCHLIESSLICH Deutsch. Niemals Englisch, auch nicht einzelne Woert
 - Wochentage, Monate und Zahlen IMMER auf Deutsch
 - Keine englischen Lehnwoerter wenn es ein deutsches Wort gibt ("Termin" statt "Appointment")
 
-${datumsKontextErstellen()}`;
+${datumsKontextErstellen()}
 
-    // Kampagnen-VAPI-Prompt mit Sprach-/Datums-Block kombinieren
-    const kombinierterPrompt = (kampagne.vapiPrompt || '') + sprachUndDatumBlock;
+# LEAD-DATEN (diese Daten hat der Lead bei der Anmeldung angegeben)
+
+${leadDatenBlock}
+
+WICHTIG zur E-Mail-Adresse:
+${lead.email ? `Die E-Mail des Leads ist: ${lead.email}
+Du MUSST diese E-Mail im Gespraech vorlesen und vom Lead bestaetigen lassen.
+Lies die E-Mail BUCHSTABE FUER BUCHSTABE vor:
+- @ = "aett"
+- . = "Punkt"
+- Laendercodes einzeln buchstabieren ("d e" fuer .de)
+- Langsam und deutlich, warte auf Bestaetigung` : 'Keine E-Mail-Adresse vorhanden.'}`;
 
     const vapiPromptMessage = {
       role: 'system',
       content: kombinierterPrompt,
     };
 
-    // Bestehende Messages (Gesprächshistorie) + kombinierter Prompt + Lead-Daten zusammenführen
+    // Bestehende Messages (Gesprächshistorie) + kombinierter Prompt zusammenfuehren
     const bisherMessages = (assistantOverrides?.model as Record<string, unknown> | undefined)?.messages as Array<Record<string, string>> | undefined;
     const alleMessages = [
       vapiPromptMessage,
       ...(bisherMessages || []),
-      leadInfoMessage,
     ];
 
     if (!assistantOverrides) assistantOverrides = {};
@@ -413,10 +422,10 @@ ${datumsKontextErstellen()}`;
       model: {
         ...(assistantOverrides?.model as Record<string, unknown> | undefined),
         provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-haiku-4-5-20251001', // Haiku fuer schnelle Voice-Interaktion (Sonnet war zu langsam)
         tools: vapiTools,
       },
-      // Stimme (ElevenLabs)
+      // Stimme (ElevenLabs) — optimiert fuer niedrige Latenz
       voice: {
         provider: '11labs',
         voiceId: kampagne.vapiVoiceId || 'EXAVITQu4vr4xnSDxMaL',
@@ -424,15 +433,15 @@ ${datumsKontextErstellen()}`;
         stability: 0.5,
         similarityBoost: 0.75,
         useSpeakerBoost: false,
-        speed: 1.05,
+        speed: 1.1,  // 10% schneller (war 1.05)
         style: 0.1,
-        optimizeStreamingLatency: 2,
+        optimizeStreamingLatency: 3, // Max Latenz-Optimierung (war 2)
         inputPunctuationBoundaries: ['，', ';'],
         language: 'de',
       },
       // VAPI Assistant-Konfiguration
       endCallFunctionEnabled: true,
-      silenceTimeoutSeconds: 30,
+      silenceTimeoutSeconds: 15, // Schnelleres Erkennen wenn Lead fertig hat (war 30)
       maxDurationSeconds: 300,
       backgroundDenoisingEnabled: true,
       voicemailDetection: { provider: 'twilio' },
