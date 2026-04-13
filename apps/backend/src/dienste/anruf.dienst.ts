@@ -728,13 +728,25 @@ export async function anrufErgebnisVerarbeiten(
     await aktivitaetLoggen(versuch.leadId, 'anruf_abgeschlossen',
       `Anruf #${versuch.versuchNummer}: ${analyse.verdict} – nächster Versuch wird geplant`);
 
-    // Follow-up E-Mail (status-spezifisch). rueckruf_geplant bekommt sofort eine Mail,
-    // voicemail/verpasst nur nach dem ersten Versuch.
-    if (analyse.ergebnis === 'rueckruf_geplant') {
-      await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, 'rueckruf');
-    } else if (versuch.versuchNummer === 1) {
-      const followUpGrund: FollowUpGrund = analyse.ergebnis === 'voicemail' ? 'voicemail' : 'verpasst';
-      await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, followUpGrund);
+    // Follow-up E-Mail senden: beim ERSTEN Mal dass dieses Ergebnis auftritt.
+    // Pruefen ob fuer diesen Lead schon eine Follow-up-Mail zu diesem Grund gesendet wurde,
+    // damit nicht nach jedem Retry eine Duplikat-Mail rausgeht.
+    const bereitsGesendet = await prisma.leadAktivitaet.findFirst({
+      where: {
+        leadId: versuch.leadId,
+        typ: 'email_gesendet',
+        beschreibung: { contains: analyse.ergebnis === 'voicemail' ? 'Voicemail' : analyse.ergebnis === 'rueckruf_geplant' ? 'Rueckruf' : 'Verpasster Anruf' },
+      },
+    });
+    if (!bereitsGesendet) {
+      if (analyse.ergebnis === 'rueckruf_geplant') {
+        await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, 'rueckruf');
+      } else {
+        const followUpGrund: FollowUpGrund = analyse.ergebnis === 'voicemail' ? 'voicemail' : 'verpasst';
+        await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, followUpGrund);
+      }
+    } else {
+      logger.info(`Follow-up fuer "${analyse.ergebnis}" bereits gesendet — Duplikat uebersprungen (Lead ${versuch.leadId})`);
     }
 
     // Nächsten Versuch planen
