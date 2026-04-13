@@ -75,10 +75,19 @@ function transportErstellen(konfig: SmtpKonfiguration) {
     host: konfig.host,
     port: konfig.port,
     secure: konfig.secure,
-    // Auth nur wenn Benutzer und Passwort gesetzt (MailHog braucht keine Auth)
+    // STARTTLS fuer Port 587 (viele Provider brauchen das)
+    ...(!konfig.secure && konfig.port === 587 ? { requireTLS: true } : {}),
+    // Timeouts damit der Worker nicht ewig haengt
+    connectionTimeout: 10000, // 10 Sek fuer TCP-Connect
+    greetingTimeout: 10000,   // 10 Sek fuer SMTP-Greeting
+    socketTimeout: 15000,     // 15 Sek fuer Daten-Transfer
+    // Auth nur wenn Benutzer und Passwort gesetzt
     ...(konfig.benutzer && konfig.passwort
       ? { auth: { user: konfig.benutzer, pass: konfig.passwort } }
       : {}),
+    // Debug-Logging fuer SMTP-Probleme
+    logger: process.env.NODE_ENV !== 'production',
+    debug: process.env.NODE_ENV !== 'production',
   });
 }
 
