@@ -614,8 +614,14 @@ export async function anrufErgebnisVerarbeiten(
       await aktivitaetLoggen(versuch.leadId, 'anruf_abgeschlossen',
         `Anruf #${versuch.versuchNummer}: Voicemail (Backup-Check bestätigt) – nächster Versuch wird geplant`);
 
-      if (versuch.versuchNummer === 1) {
+      // Follow-up Mail senden wenn noch nicht fuer diesen Lead geschehen
+      const bereitsVoicemailGesendet = await prisma.leadAktivitaet.findFirst({
+        where: { leadId: versuch.leadId, typ: 'email_gesendet', beschreibung: { contains: 'Voicemail' } },
+      });
+      if (!bereitsVoicemailGesendet) {
         await followUpSenden(versuch.leadId, versuch.kampagneId, kampagne, 'voicemail');
+      } else {
+        logger.info(`Follow-up "voicemail" bereits gesendet — Duplikat uebersprungen (Lead ${versuch.leadId})`);
       }
 
       await naechstenAnrufPlanen(versuch.leadId, versuch.kampagneId, versuch.versuchNummer + 1);
