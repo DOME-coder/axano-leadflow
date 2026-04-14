@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Save, Plus, Megaphone, Users, TrendingUp, Settings, ExternalLink, Trash2, RefreshCw } from 'lucide-react';
@@ -238,6 +238,20 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   const [formKonfig, setFormKonfig] = useState<Record<string, string>>({});
   const [formAktiv, setFormAktiv] = useState(false);
 
+  // Klick ausserhalb des Formulars schliesst es
+  const formRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!bearbeitenName) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (formRef.current && !formRef.current.contains(e.target as Node)) {
+        setBearbeitenName(null);
+      }
+    };
+    // Delay damit der Klick auf "Konfigurieren" nicht sofort wieder schliesst
+    const timer = setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 100);
+    return () => { clearTimeout(timer); document.removeEventListener('mousedown', handleClickOutside); };
+  }, [bearbeitenName]);
+
   const bearbeitenStarten = (integration: { name: string; felder: string[]; konfiguration: Record<string, string>; aktiv: boolean }) => {
     setBearbeitenName(integration.name);
     const konfig: Record<string, string> = {};
@@ -333,7 +347,7 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
             </div>
 
             {bearbeitenName === integration.name && (
-              <div className="mt-3 space-y-2 pt-3 border-t ax-rahmen-leicht">
+              <div ref={formRef} className="mt-3 space-y-2 pt-3 border-t ax-rahmen-leicht">
                 {integration.felder.map((feld) => (
                   <div key={feld} className="space-y-0.5">
                     <label className="text-xs font-medium ax-text">{feld}</label>
