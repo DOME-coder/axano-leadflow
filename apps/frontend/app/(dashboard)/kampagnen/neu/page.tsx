@@ -116,8 +116,12 @@ function NeueKampagneInhalt() {
         .map((f) => f.trim())
         .filter((f) => f.length > 0);
 
+      // Kundennamen fuer den Prompt ermitteln
+      const ausgewaehlterKunde = kunden?.eintraege.find((k) => k.id === kundeId);
+      const firmenname = ausgewaehlterKunde?.name || neuerKundeName.trim() || undefined;
+
       const ergebnis = await kiGenerierung.mutateAsync({
-        branche, produkt, zielgruppe, ton,
+        branche, produkt, zielgruppe, ton, firmenname,
         kiName: kanalWerte.kiName || undefined,
         kiGeschlecht: kanalWerte.kiGeschlecht || undefined,
         kiSprachstil: kanalWerte.kiSprachstil || undefined,

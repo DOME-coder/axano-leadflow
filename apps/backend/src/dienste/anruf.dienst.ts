@@ -206,7 +206,10 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     }
   }
 
-  const kampagne = await prisma.kampagne.findUnique({ where: { id: versuch.kampagneId } });
+  const kampagne = await prisma.kampagne.findUnique({
+    where: { id: versuch.kampagneId },
+    include: { kunde: { select: { name: true } } },
+  });
   if (!kampagne) return;
 
   // Status + Lead-Felder aktualisieren
@@ -274,10 +277,15 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       ...leadFelddaten.map((f) => `- ${f.feld.bezeichnung}: ${f.wert || '—'}`),
     ].join('\n');
 
-    // Fix 1: Agent-Name konsistent erzwingen (ueberschreibt ggf. im Prompt hartcodierten Namen)
-    const nameBlock = kampagne.kiName
-      ? `\n\n# DEIN NAME\nDein Name ist ${kampagne.kiName}. Verwende AUSSCHLIESSLICH diesen Namen im gesamten Gespraech. Stelle dich IMMER als "${kampagne.kiName}" vor, niemals mit einem anderen Namen.`
-      : '';
+    // Agent-Name + Firmenname konsistent erzwingen
+    const kundenFirmenname = (kampagne as { kunde?: { name: string } | null }).kunde?.name;
+    let nameBlock = '';
+    if (kampagne.kiName) {
+      nameBlock += `\n\n# DEIN NAME\nDein Name ist ${kampagne.kiName}. Verwende AUSSCHLIESSLICH diesen Namen im gesamten Gespraech. Stelle dich IMMER als "${kampagne.kiName}" vor, niemals mit einem anderen Namen.`;
+    }
+    if (kundenFirmenname) {
+      nameBlock += `\n\n# UNTERNEHMEN\nDu arbeitest fuer "${kundenFirmenname}". Sage im Gespraech IMMER den echten Firmennamen "${kundenFirmenname}" — NIEMALS einen erfundenen oder anderen Firmennamen. Beispiel: "Ich rufe im Namen von ${kundenFirmenname} an."`;
+    }
 
     // Alles in EINEN kombinierten Prompt (keine separaten System-Messages)
     // So beachtet das LLM Lead-Daten, Sprach-Regeln und Name-Anweisung zuverlaessig

@@ -161,6 +161,7 @@ export function benutzeKiGenerierung() {
       produkt: string;
       zielgruppe: string;
       ton: string;
+      firmenname?: string;
       kiName?: string;
       kiGeschlecht?: string;
       kiSprachstil?: string;

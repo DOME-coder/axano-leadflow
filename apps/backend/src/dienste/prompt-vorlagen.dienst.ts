@@ -47,18 +47,16 @@ export async function promptVorlageLoeschen(id: string) {
 }
 
 export async function aehnlicheVorlagenSuchen(branche: string) {
-  // Suche nach Vorlagen mit ähnlicher Branche (case-insensitive contains)
-  const suchbegriffe = branche.toLowerCase().split(/[\s,]+/).filter((s) => s.length > 2);
-
-  if (suchbegriffe.length === 0) return [];
+  // EXAKTES Branche-Matching (case-insensitive) — nur identische Branchen matchen.
+  // "Private Krankenversicherung" darf NICHT "Pferdeversicherung" matchen,
+  // nur weil beide "versicherung" enthalten.
+  if (!branche.trim()) return [];
 
   return prisma.promptVorlage.findMany({
     where: {
-      OR: suchbegriffe.map((begriff) => ({
-        branche: { contains: begriff, mode: 'insensitive' as const },
-      })),
+      branche: { equals: branche.trim(), mode: 'insensitive' as const },
     },
     orderBy: { aktualisiertAm: 'desc' },
-    take: 5,
+    take: 3,
   });
 }

@@ -8,6 +8,7 @@ export interface KiGenerierungEingabe {
   produkt: string;
   zielgruppe: string;
   ton: string;
+  firmenname?: string;
   kiName?: string;
   kiGeschlecht?: string;
   kiSprachstil?: string;
@@ -71,9 +72,12 @@ function vapiGenerierungsPromptBauen(eingabe: KiGenerierungEingabe): string {
     ? eingabe.zusatzFelder.map((f) => `- ${f}`).join('\n')
     : '(keine zusätzlichen Felder)';
 
+  const firmenname = eingabe.firmenname || 'das Unternehmen';
+
   return `Du bist ein Experte für KI-gestützte Telefon-Assistenten. Erstelle alle Inhalte für eine Lead-Qualifizierungs-Kampagne.
 
 ## Kampagnen-Details
+- Unternehmen: ${firmenname}${eingabe.firmenname ? ' (verwende diesen EXAKTEN Firmennamen im Prompt, KEINEN erfundenen Namen)' : ''}
 - Branche: ${eingabe.branche}
 - Produkt/Dienstleistung: ${eingabe.produkt}
 - Zielgruppe: ${eingabe.zielgruppe}

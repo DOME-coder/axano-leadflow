@@ -154,6 +154,7 @@ const kiGenerierungSchema = z.object({
   produkt: z.string().min(1, 'Produkt ist erforderlich'),
   zielgruppe: z.string().min(1, 'Zielgruppe ist erforderlich'),
   ton: z.string().min(1, 'Ton ist erforderlich'),
+  firmenname: z.string().optional(),
   kiName: z.string().optional(),
   kiGeschlecht: z.string().optional(),
   kiSprachstil: z.string().optional(),
