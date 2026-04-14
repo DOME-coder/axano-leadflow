@@ -14,8 +14,8 @@ const INTEGRATIONEN_DEFINITIONEN = [
   {
     name: 'facebook',
     typ: 'Facebook Lead Ads',
-    felder: ['app_id', 'app_geheimnis', 'verify_token', 'seiten_zugriffstoken'],
-    sensibleFelder: ['app_geheimnis', 'seiten_zugriffstoken'],
+    felder: ['app_id', 'app_geheimnis', 'verify_token', 'seiten_zugriffstoken', 'page_id', 'page_name', 'page_access_token'],
+    sensibleFelder: ['app_geheimnis', 'seiten_zugriffstoken', 'page_access_token'],
   },
   {
     name: 'superchat',

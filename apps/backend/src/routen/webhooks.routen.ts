@@ -153,12 +153,13 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
     }
 
     // Facebook-Zugriffstoken aus Kampagnen-Konfiguration oder Integration lesen
+    // Unterstuetzt sowohl das alte Feld (seiten_zugriffstoken) als auch das neue (page_access_token)
     const triggerKonfig = kampagne.triggerKonfiguration as Record<string, string> | null;
     let zugriffstoken = triggerKonfig?.seiten_zugriffstoken;
 
     if (!zugriffstoken) {
       const fbKonfig = await integrationKonfigurationLesenMitFallback('facebook', kampagne.kundeId);
-      zugriffstoken = fbKonfig?.seiten_zugriffstoken;
+      zugriffstoken = fbKonfig?.page_access_token || fbKonfig?.seiten_zugriffstoken;
     }
 
     for (const eintrag of entry) {

@@ -36,6 +36,12 @@ export function outlookRedirectUri(): string {
   return `${apiBaseUrl}/api/v1/oauth/outlook/callback`;
 }
 
+// Hilfsfunktion: Statische Redirect-URI für Facebook
+export function facebookRedirectUri(): string {
+  const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
+  return `${apiBaseUrl}/api/v1/oauth/facebook/callback`;
+}
+
 // ──────────────────────────────────────────────
 // Google Callback
 // ──────────────────────────────────────────────
@@ -185,6 +191,155 @@ oauthRouter.get('/outlook/callback', async (req: Request, res: Response, next: N
     res.redirect(`${frontendUrl}/kunden/${kundeId}?outlook_calendar=verbunden`);
   } catch (fehler) {
     logger.error('Outlook OAuth Callback fehlgeschlagen:', { error: fehler });
+    next(fehler);
+  }
+});
+
+// ──────────────────────────────────────────────
+// Facebook Callback
+// ──────────────────────────────────────────────
+oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { code, state, error, error_reason } = req.query;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+
+    if (error) {
+      logger.warn(`Facebook OAuth abgelehnt: ${String(error)} (${String(error_reason || '')})`);
+      res.redirect(`${frontendUrl}/kunden?facebook_lead_ads=fehler&grund=${encodeURIComponent(String(error_reason || error))}`);
+      return;
+    }
+
+    const kundeId = kundeIdAusState(state);
+    if (!kundeId) {
+      res.status(400).send('Ungültiger oder fehlender state-Parameter.');
+      return;
+    }
+
+    if (!code || typeof code !== 'string') {
+      res.status(400).send('Authorization Code fehlt.');
+      return;
+    }
+
+    const appId = process.env.FACEBOOK_APP_ID;
+    const appGeheimnis = process.env.FACEBOOK_APP_GEHEIMNIS;
+    if (!appId || !appGeheimnis) {
+      res.status(500).send('Facebook OAuth nicht konfiguriert (FACEBOOK_APP_ID / FACEBOOK_APP_GEHEIMNIS fehlen).');
+      return;
+    }
+
+    // Schritt 1: Code gegen User-Access-Token tauschen
+    const tokenAntwort = await fetch(
+      `https://graph.facebook.com/v18.0/oauth/access_token?${new URLSearchParams({
+        client_id: appId,
+        client_secret: appGeheimnis,
+        redirect_uri: facebookRedirectUri(),
+        code,
+      })}`,
+      { signal: AbortSignal.timeout(15000) }
+    );
+
+    if (!tokenAntwort.ok) {
+      const fehlerText = await tokenAntwort.text();
+      logger.error('Facebook Token-Tausch fehlgeschlagen:', { fehlerText });
+      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Token-Tausch fehlgeschlagen')}`);
+      return;
+    }
+
+    const tokenDaten = (await tokenAntwort.json()) as { access_token: string };
+    const userToken = tokenDaten.access_token;
+
+    // Schritt 2: Seiten des Users abrufen (mit Page-Access-Tokens)
+    const seitenAntwort = await fetch(
+      `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}&fields=id,name,access_token`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+
+    if (!seitenAntwort.ok) {
+      logger.error('Facebook Seiten-Abruf fehlgeschlagen');
+      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Seiten konnten nicht abgerufen werden')}`);
+      return;
+    }
+
+    const seitenDaten = (await seitenAntwort.json()) as {
+      data: Array<{ id: string; name: string; access_token: string }>;
+    };
+
+    if (!seitenDaten.data?.length) {
+      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Keine Facebook-Seiten gefunden. Bitte Berechtigungen pruefen.')}`);
+      return;
+    }
+
+    // Option A: Erste Seite automatisch nehmen
+    const seite = seitenDaten.data[0];
+    logger.info(`Facebook OAuth: Seite "${seite.name}" (ID: ${seite.id}) ausgewaehlt fuer Kunde ${kundeId}`);
+
+    // Schritt 3: Page-Token langlebig machen (60 Tage)
+    let langLebigerPageToken = seite.access_token;
+    try {
+      const llAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/oauth/access_token?${new URLSearchParams({
+          grant_type: 'fb_exchange_token',
+          client_id: appId,
+          client_secret: appGeheimnis,
+          fb_exchange_token: seite.access_token,
+        })}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (llAntwort.ok) {
+        const llDaten = (await llAntwort.json()) as { access_token: string };
+        langLebigerPageToken = llDaten.access_token;
+        logger.info(`Facebook: Page-Token fuer "${seite.name}" auf langlebig umgetauscht`);
+      } else {
+        logger.warn('Facebook: Langlebiger Token-Tausch fehlgeschlagen — verwende kurzlebigen Token');
+      }
+    } catch {
+      logger.warn('Facebook: Langlebiger Token-Tausch Timeout — verwende kurzlebigen Token');
+    }
+
+    // Schritt 4: Webhook fuer leadgen auf der Seite registrieren
+    try {
+      const webhookAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/${seite.id}/subscribed_apps`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            access_token: langLebigerPageToken,
+            subscribed_fields: ['leadgen'],
+          }),
+          signal: AbortSignal.timeout(10000),
+        }
+      );
+      if (webhookAntwort.ok) {
+        logger.info(`Facebook: Webhook fuer leadgen auf Seite "${seite.name}" registriert`);
+      } else {
+        const webhookFehler = await webhookAntwort.text();
+        logger.warn(`Facebook: Webhook-Registrierung fehlgeschlagen: ${webhookFehler}`);
+      }
+    } catch (webhookErr) {
+      logger.warn('Facebook: Webhook-Registrierung Timeout', { error: webhookErr });
+    }
+
+    // Schritt 5: Alles in KundenIntegration speichern
+    await kundenIntegrationSpeichern(
+      kundeId,
+      'facebook',
+      {
+        app_id: appId,
+        app_geheimnis: appGeheimnis,
+        verify_token: process.env.FACEBOOK_VERIFY_TOKEN || '',
+        seiten_zugriffstoken: langLebigerPageToken,
+        page_id: seite.id,
+        page_name: seite.name,
+        page_access_token: langLebigerPageToken,
+      },
+      true,
+    );
+
+    logger.info(`Facebook Lead Ads OAuth erfolgreich fuer Kunde ${kundeId} (Seite: ${seite.name})`);
+    res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=verbunden`);
+  } catch (fehler) {
+    logger.error('Facebook OAuth Callback fehlgeschlagen:', { error: fehler });
     next(fehler);
   }
 });

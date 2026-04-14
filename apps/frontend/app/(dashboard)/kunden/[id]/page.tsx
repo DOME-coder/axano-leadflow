@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Save, Plus, Megaphone, Users, TrendingUp, Settings, ExternalLink, Trash2, RefreshCw } from 'lucide-react';
 import { benutzeKunde, benutzeKundeAktualisieren } from '@/hooks/benutze-kunden';
-import { benutzeKundenIntegrationen, benutzeKundenIntegrationSpeichern, benutzeKundenIntegrationLoeschen, benutzeGoogleOAuthUrl, benutzeOutlookOAuthUrl } from '@/hooks/benutze-kunden-integrationen';
+import { benutzeKundenIntegrationen, benutzeKundenIntegrationSpeichern, benutzeKundenIntegrationLoeschen, benutzeGoogleOAuthUrl, benutzeOutlookOAuthUrl, benutzeFacebookOAuthUrl } from '@/hooks/benutze-kunden-integrationen';
 import { useToastStore } from '@/stores/toast-store';
 
 export default function KundeDetailSeite({ params }: { params: { id: string } }) {
@@ -20,11 +20,12 @@ export default function KundeDetailSeite({ params }: { params: { id: string } })
   const [form, setForm] = useState({ name: '', kontaktperson: '', email: '', telefon: '', branche: '', notizen: '' });
   const [erfolg, setErfolg] = useState('');
 
-  // OAuth-Callback-Feedback: nach Redirect von Google/Outlook
+  // OAuth-Callback-Feedback: nach Redirect von Google/Outlook/Facebook
   useEffect(() => {
     if (!searchParams) return;
     const google = searchParams.get('google_calendar');
     const outlook = searchParams.get('outlook_calendar');
+    const facebook = searchParams.get('facebook_lead_ads');
     const grund = searchParams.get('grund');
 
     if (google === 'verbunden') {
@@ -35,10 +36,14 @@ export default function KundeDetailSeite({ params }: { params: { id: string } })
       toastAnzeigen('erfolg', 'Outlook Calendar erfolgreich verbunden');
     } else if (outlook === 'fehler') {
       toastAnzeigen('fehler', `Outlook Calendar konnte nicht verbunden werden${grund ? `: ${grund}` : ''}`);
+    } else if (facebook === 'verbunden') {
+      toastAnzeigen('erfolg', 'Facebook Lead Ads erfolgreich verbunden');
+    } else if (facebook === 'fehler') {
+      toastAnzeigen('fehler', `Facebook konnte nicht verbunden werden${grund ? `: ${grund}` : ''}`);
     }
 
-    // Query-Params nach dem Anzeigen aufräumen, damit der Toast bei Reload nicht nochmal kommt
-    if (google || outlook) {
+    // Query-Params nach dem Anzeigen aufräumen
+    if (google || outlook || facebook) {
       router.replace(`/kunden/${id}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,6 +238,7 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   const loeschen = benutzeKundenIntegrationLoeschen();
   const googleOAuth = benutzeGoogleOAuthUrl(kundeId);
   const outlookOAuth = benutzeOutlookOAuthUrl(kundeId);
+  const facebookOAuth = benutzeFacebookOAuthUrl(kundeId);
 
   const [bearbeitenName, setBearbeitenName] = useState<string | null>(null);
   const [formKonfig, setFormKonfig] = useState<Record<string, string>>({});
@@ -274,6 +280,11 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
 
   const googleVerbinden = async () => {
     const ergebnis = await googleOAuth.mutateAsync();
+    window.location.href = ergebnis.url;
+  };
+
+  const facebookVerbinden = async () => {
+    const ergebnis = await facebookOAuth.mutateAsync();
     window.location.href = ergebnis.url;
   };
 
@@ -333,6 +344,16 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
                   >
                     <ExternalLink className="w-3 h-3" />
                     {outlookOAuth.isPending ? 'Verbinde...' : 'Mit Outlook verbinden'}
+                  </button>
+                )}
+                {integration.name === 'facebook' && !integration.eigeneKonfiguration && (
+                  <button
+                    onClick={facebookVerbinden}
+                    disabled={facebookOAuth.isPending}
+                    className="flex items-center gap-1 text-xs bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    {facebookOAuth.isPending ? 'Verbinde...' : 'Mit Facebook verbinden'}
                   </button>
                 )}
                 {bearbeitenName !== integration.name && (

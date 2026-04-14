@@ -74,3 +74,12 @@ export function benutzeOutlookOAuthUrl(kundeId: string) {
     },
   });
 }
+
+export function benutzeFacebookOAuthUrl(kundeId: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/facebook/oauth-url`);
+      return data.daten as { url: string };
+    },
+  });
+}

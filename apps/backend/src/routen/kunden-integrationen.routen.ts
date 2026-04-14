@@ -7,7 +7,7 @@ import {
   kundenIntegrationSpeichern,
   kundenIntegrationLoeschen,
 } from '../dienste/integrationen.dienst';
-import { googleRedirectUri, outlookRedirectUri } from './oauth.routen';
+import { googleRedirectUri, outlookRedirectUri, facebookRedirectUri } from './oauth.routen';
 import { logger } from '../hilfsfunktionen/logger';
 
 export const kundenIntegrationenRouter = Router({ mergeParams: true });
@@ -123,6 +123,40 @@ kundenIntegrationenRouter.get('/outlook/oauth-url', async (req: Request, res: Re
     });
 
     const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params}`;
+
+    res.json({ erfolg: true, daten: { url } });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// ──────────────────────────────────────────────
+// Facebook Lead Ads OAuth Flow (URL-Generator)
+// Callback liegt unter /api/v1/oauth/facebook/callback (statisch)
+// ──────────────────────────────────────────────
+
+// GET /api/v1/kunden/:kundeId/integrationen/facebook/oauth-url
+kundenIntegrationenRouter.get('/facebook/oauth-url', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const appId = process.env.FACEBOOK_APP_ID;
+
+    if (!appId) {
+      res.status(400).json({
+        erfolg: false,
+        fehler: 'Facebook OAuth ist nicht konfiguriert. Bitte FACEBOOK_APP_ID als Umgebungsvariable setzen.',
+      });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: facebookRedirectUri(),
+      scope: 'pages_manage_metadata,pages_read_engagement,leads_retrieval,pages_show_list',
+      response_type: 'code',
+      state: req.params.kundeId,
+    });
+
+    const url = `https://www.facebook.com/v18.0/dialog/oauth?${params}`;
 
     res.json({ erfolg: true, daten: { url } });
   } catch (fehler) {
