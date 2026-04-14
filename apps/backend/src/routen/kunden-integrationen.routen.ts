@@ -151,7 +151,7 @@ kundenIntegrationenRouter.get('/facebook/oauth-url', async (req: Request, res: R
     const params = new URLSearchParams({
       client_id: appId,
       redirect_uri: facebookRedirectUri(),
-      scope: 'pages_manage_metadata,pages_read_engagement,leads_retrieval,pages_show_list',
+      scope: 'business_management,pages_manage_metadata,pages_read_engagement,leads_retrieval,pages_show_list',
       response_type: 'code',
       state: req.params.kundeId,
     });
