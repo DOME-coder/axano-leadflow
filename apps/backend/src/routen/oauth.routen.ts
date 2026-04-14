@@ -261,34 +261,84 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
       }
     } catch { /* nur Diagnose, kein Abbruch */ }
 
-    // Schritt 2: Seiten des Users abrufen (mit Page-Access-Tokens)
+    // Schritt 2: Seiten des Users abrufen
+    // Versuch 1: /me/accounts (klassisches Facebook Login)
+    // Versuch 2: /me/accounts mit limit (manchmal noetig)
+    // Versuch 3: Business-API Fallback
+    let seitenListe: Array<{ id: string; name: string; access_token: string }> = [];
+
+    // Versuch 1: Standard /me/accounts
     const seitenAntwort = await fetch(
-      `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}&fields=id,name,access_token`,
+      `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`,
       { signal: AbortSignal.timeout(10000) }
     );
 
-    if (!seitenAntwort.ok) {
+    if (seitenAntwort.ok) {
+      const seitenRoh = await seitenAntwort.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
+      logger.info('Facebook /me/accounts Antwort:', { anzahl: seitenRoh.data?.length || 0 });
+      seitenListe = seitenRoh.data || [];
+    } else {
       const seitenFehler = await seitenAntwort.text();
-      logger.error('Facebook Seiten-Abruf fehlgeschlagen:', { status: seitenAntwort.status, body: seitenFehler });
-      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Seiten konnten nicht abgerufen werden')}`);
-      return;
+      logger.error('Facebook /me/accounts fehlgeschlagen:', { status: seitenAntwort.status, body: seitenFehler });
     }
 
-    const seitenRoh = await seitenAntwort.json();
-    logger.info('Facebook /me/accounts Antwort:', { antwort: JSON.stringify(seitenRoh).substring(0, 500) });
+    // Versuch 2: Falls leer, probiere ueber /me/businesses → /{business_id}/owned_pages
+    if (seitenListe.length === 0) {
+      logger.info('Facebook OAuth: /me/accounts leer — versuche Business-API...');
+      try {
+        const bizAntwort = await fetch(
+          `https://graph.facebook.com/v18.0/me/businesses?access_token=${userToken}&fields=id,name`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (bizAntwort.ok) {
+          const bizDaten = await bizAntwort.json() as { data?: Array<{ id: string; name: string }> };
+          logger.info('Facebook /me/businesses:', { anzahl: bizDaten.data?.length || 0 });
 
-    const seitenDaten = seitenRoh as {
-      data: Array<{ id: string; name: string; access_token: string }>;
-    };
+          for (const biz of bizDaten.data || []) {
+            const pagesAntwort = await fetch(
+              `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?access_token=${userToken}&fields=id,name,access_token&limit=100`,
+              { signal: AbortSignal.timeout(10000) }
+            );
+            if (pagesAntwort.ok) {
+              const pagesDaten = await pagesAntwort.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
+              if (pagesDaten.data?.length) {
+                logger.info(`Facebook: ${pagesDaten.data.length} Seiten gefunden ueber Business "${biz.name}"`);
+                seitenListe.push(...pagesDaten.data);
+              }
+            }
+          }
+        }
+      } catch (bizFehler) {
+        logger.warn('Facebook Business-API Fallback fehlgeschlagen:', { error: bizFehler });
+      }
+    }
 
-    if (!seitenDaten.data?.length) {
-      logger.warn('Facebook OAuth: Keine Seiten in /me/accounts — vollstaendige Antwort:', { antwort: JSON.stringify(seitenRoh) });
-      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Keine Facebook-Seiten gefunden. Bitte Berechtigungen pruefen.')}`);
+    // Versuch 3: Falls immer noch leer, probiere /me?fields=accounts
+    if (seitenListe.length === 0) {
+      logger.info('Facebook OAuth: Business-API auch leer — versuche /me?fields=accounts...');
+      try {
+        const meAntwort = await fetch(
+          `https://graph.facebook.com/v18.0/me?access_token=${userToken}&fields=accounts{id,name,access_token}`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (meAntwort.ok) {
+          const meDaten = await meAntwort.json() as { accounts?: { data?: Array<{ id: string; name: string; access_token: string }> } };
+          if (meDaten.accounts?.data?.length) {
+            logger.info(`Facebook: ${meDaten.accounts.data.length} Seiten gefunden ueber /me?fields=accounts`);
+            seitenListe.push(...meDaten.accounts.data);
+          }
+        }
+      } catch { /* letzter Versuch, ignoriere Fehler */ }
+    }
+
+    if (seitenListe.length === 0) {
+      logger.warn('Facebook OAuth: Keine Seiten gefunden nach allen 3 Versuchen');
+      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Keine Facebook-Seiten gefunden. Moeglicherweise muss die App im Meta Developer Portal als Business-App mit Seiten-Zugriff konfiguriert werden.')}`);
       return;
     }
 
     // Option A: Erste Seite automatisch nehmen
-    const seite = seitenDaten.data[0];
+    const seite = seitenListe[0];
     logger.info(`Facebook OAuth: Seite "${seite.name}" (ID: ${seite.id}) ausgewaehlt fuer Kunde ${kundeId}`);
 
     // Schritt 3: Page-Token langlebig machen (60 Tage)
