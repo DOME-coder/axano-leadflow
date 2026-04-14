@@ -247,6 +247,19 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
 
     const tokenDaten = (await tokenAntwort.json()) as { access_token: string };
     const userToken = tokenDaten.access_token;
+    logger.info('Facebook OAuth: User-Token erhalten, pruefe Permissions...');
+
+    // Debug: Token-Permissions pruefen
+    try {
+      const debugAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/me/permissions?access_token=${userToken}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (debugAntwort.ok) {
+        const perms = await debugAntwort.json();
+        logger.info('Facebook OAuth: Token-Permissions:', { permissions: JSON.stringify(perms) });
+      }
+    } catch { /* nur Diagnose, kein Abbruch */ }
 
     // Schritt 2: Seiten des Users abrufen (mit Page-Access-Tokens)
     const seitenAntwort = await fetch(
@@ -255,16 +268,21 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
     );
 
     if (!seitenAntwort.ok) {
-      logger.error('Facebook Seiten-Abruf fehlgeschlagen');
+      const seitenFehler = await seitenAntwort.text();
+      logger.error('Facebook Seiten-Abruf fehlgeschlagen:', { status: seitenAntwort.status, body: seitenFehler });
       res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Seiten konnten nicht abgerufen werden')}`);
       return;
     }
 
-    const seitenDaten = (await seitenAntwort.json()) as {
+    const seitenRoh = await seitenAntwort.json();
+    logger.info('Facebook /me/accounts Antwort:', { antwort: JSON.stringify(seitenRoh).substring(0, 500) });
+
+    const seitenDaten = seitenRoh as {
       data: Array<{ id: string; name: string; access_token: string }>;
     };
 
     if (!seitenDaten.data?.length) {
+      logger.warn('Facebook OAuth: Keine Seiten in /me/accounts — vollstaendige Antwort:', { antwort: JSON.stringify(seitenRoh) });
       res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Keine Facebook-Seiten gefunden. Bitte Berechtigungen pruefen.')}`);
       return;
     }
