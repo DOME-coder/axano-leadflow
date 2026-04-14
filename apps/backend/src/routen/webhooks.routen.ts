@@ -133,6 +133,8 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
       if (!webhookSignaturVerifizieren(rohDaten, fbSignatur, fbGeheimnis)) {
         throw new AppFehler('Ungültige Facebook-Signatur', 401, 'FB_SIGNATUR_UNGUELTIG');
       }
+    } else if (!fbGeheimnis) {
+      logger.warn('Facebook-Webhook: FACEBOOK_APP_GEHEIMNIS nicht gesetzt — Signatur-Verifikation uebersprungen. Bitte in Coolify-ENV setzen!');
     }
 
     const kampagne = await prisma.kampagne.findUnique({
@@ -183,6 +185,7 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
           }
 
           if (leadDaten) {
+            logger.info(`Facebook-Lead empfangen: ${leadDaten.vorname || '?'} ${leadDaten.nachname || '?'} (Kampagne: ${kampagne.name})`);
             await leadErstellen({
               kampagneId: kampagne.id,
               vorname: leadDaten.vorname,
@@ -192,6 +195,14 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
               quelle: 'facebook_lead_ads',
               rohdaten: aenderung.value as Record<string, unknown>,
               felddaten: leadDaten.felddaten,
+            });
+          } else {
+            logger.error('Facebook-Lead konnte NICHT verarbeitet werden — weder Graph API noch Webhook-Payload lieferten Daten', {
+              kampagne: kampagne.name,
+              kampagneSlug,
+              leadgenId: aenderung.value?.leadgen_id || 'unbekannt',
+              hatZugriffstoken: !!zugriffstoken,
+              hatFieldData: !!aenderung.value?.field_data,
             });
           }
         }

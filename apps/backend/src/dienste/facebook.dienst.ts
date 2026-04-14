@@ -55,11 +55,13 @@ export async function facebookLeadAbrufen(
   const url = `https://graph.facebook.com/v18.0/${leadgenId}?access_token=${zugriffstoken}&fields=field_data,created_time`;
 
   try {
-    const antwort = await fetch(url);
+    const antwort = await fetch(url, {
+      signal: AbortSignal.timeout(10000), // 10 Sekunden Timeout
+    });
 
     if (!antwort.ok) {
       const fehler = await antwort.text();
-      logger.error(`Facebook Graph API Fehler: ${antwort.status}`, { fehler });
+      logger.error(`Facebook Graph API Fehler: ${antwort.status}`, { fehler, leadgenId });
       throw new Error(`Facebook API Fehler: ${antwort.status}`);
     }
 
