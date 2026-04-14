@@ -104,10 +104,16 @@ export function benutzeFacebookForms(kundeId: string) {
   return useQuery({
     queryKey: ['facebook-forms', kundeId],
     queryFn: async () => {
-      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/facebook/forms`);
-      return data.daten as FacebookForm[];
+      try {
+        const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/facebook/forms`);
+        return data.daten as FacebookForm[];
+      } catch {
+        // Kein Facebook verbunden oder Fehler → leere Liste statt Crash
+        return [] as FacebookForm[];
+      }
     },
     enabled: !!kundeId,
-    staleTime: 60000, // 1 Min Cache
+    staleTime: 60000,
+    retry: false, // Nicht wiederholen wenn Facebook-Integration fehlt
   });
 }

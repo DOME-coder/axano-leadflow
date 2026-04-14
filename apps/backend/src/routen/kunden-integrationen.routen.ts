@@ -190,8 +190,18 @@ kundenIntegrationenRouter.get('/facebook/forms', async (req: Request, res: Respo
 
     if (!formsAntwort.ok) {
       const fehlerText = await formsAntwort.text();
-      logger.error('Facebook Forms-Abruf fehlgeschlagen:', { status: formsAntwort.status, body: fehlerText.substring(0, 300) });
-      res.status(502).json({ erfolg: false, fehler: 'Facebook-Formulare konnten nicht abgerufen werden.' });
+      logger.error('Facebook Forms-Abruf fehlgeschlagen:', { status: formsAntwort.status, body: fehlerText.substring(0, 500), pageId: fbKonfig.page_id });
+
+      // Facebook-Fehlermeldung extrahieren und durchreichen
+      let fbFehler = 'Facebook-Formulare konnten nicht abgerufen werden.';
+      try {
+        const fbJson = JSON.parse(fehlerText) as { error?: { message?: string; code?: number } };
+        if (fbJson.error?.message) {
+          fbFehler = `Facebook-Fehler: ${fbJson.error.message}`;
+        }
+      } catch { /* kein JSON */ }
+
+      res.status(400).json({ erfolg: false, fehler: fbFehler });
       return;
     }
 
