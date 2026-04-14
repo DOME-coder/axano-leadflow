@@ -162,10 +162,20 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
       zugriffstoken = fbKonfig?.page_access_token || fbKonfig?.seiten_zugriffstoken;
     }
 
+    // Form-IDs aus der Trigger-Konfiguration (falls gesetzt → nur diese Forms akzeptieren)
+    const erlaubteFormIds = triggerKonfig?.form_ids as string[] | undefined;
+
     for (const eintrag of entry) {
       const changes = eintrag.changes || [];
       for (const aenderung of changes) {
         if (aenderung.field === 'leadgen') {
+          // Form-ID-Filter: Wenn form_ids konfiguriert → nur Leads von diesen Formularen
+          const webhookFormId = aenderung.value?.form_id as string | undefined;
+          if (erlaubteFormIds?.length && webhookFormId && !erlaubteFormIds.includes(webhookFormId)) {
+            logger.info(`Facebook-Lead von Form ${webhookFormId} uebersprungen — nicht in erlaubten Forms: ${erlaubteFormIds.join(', ')}`);
+            continue;
+          }
+
           let leadDaten;
 
           // Feldmappings aus der Trigger-Konfiguration laden

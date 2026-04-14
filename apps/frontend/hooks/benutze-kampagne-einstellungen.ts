@@ -27,6 +27,7 @@ interface KampagneEinstellungen {
   kiSprachstil?: string | null;
   benachrichtigungEmail?: string | null;
   calendlyLink?: string | null;
+  triggerKonfiguration?: Record<string, unknown>;
 }
 
 export function benutzeKampagneEinstellungenSpeichern() {

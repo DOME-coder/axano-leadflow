@@ -163,3 +163,72 @@ kundenIntegrationenRouter.get('/facebook/oauth-url', async (req: Request, res: R
     next(fehler);
   }
 });
+
+// ──────────────────────────────────────────────
+// Facebook Lead Forms abrufen (pro Kunde)
+// ──────────────────────────────────────────────
+
+// GET /api/v1/kunden/:kundeId/integrationen/facebook/forms
+kundenIntegrationenRouter.get('/facebook/forms', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fbKonfig = await import('../dienste/integrationen.dienst').then(
+      (m) => m.integrationKonfigurationLesenMitFallback('facebook', req.params.kundeId)
+    );
+
+    if (!fbKonfig?.page_access_token || !fbKonfig?.page_id) {
+      res.status(400).json({
+        erfolg: false,
+        fehler: 'Facebook ist für diesen Kunden nicht verbunden. Bitte zuerst "Mit Facebook verbinden".',
+      });
+      return;
+    }
+
+    const formsAntwort = await fetch(
+      `https://graph.facebook.com/v18.0/${fbKonfig.page_id}/leadgen_forms?access_token=${fbKonfig.page_access_token}&fields=id,name,status,questions,created_time&limit=50`,
+      { signal: AbortSignal.timeout(15000) }
+    );
+
+    if (!formsAntwort.ok) {
+      const fehlerText = await formsAntwort.text();
+      logger.error('Facebook Forms-Abruf fehlgeschlagen:', { status: formsAntwort.status, body: fehlerText.substring(0, 300) });
+      res.status(502).json({ erfolg: false, fehler: 'Facebook-Formulare konnten nicht abgerufen werden.' });
+      return;
+    }
+
+    const formsDaten = await formsAntwort.json() as {
+      data?: Array<{
+        id: string;
+        name: string;
+        status: string;
+        created_time?: string;
+        questions?: Array<{
+          key: string;
+          label: string;
+          type: string;
+          options?: Array<{ key: string; value: string }>;
+        }>;
+      }>;
+    };
+
+    // Standard-Facebook-Felder die automatisch gemappt werden
+    const standardFelder = new Set(['first_name', 'last_name', 'email', 'phone_number', 'full_name', 'city', 'state', 'zip_code', 'country']);
+
+    const forms = (formsDaten.data || []).map((form) => ({
+      id: form.id,
+      name: form.name,
+      status: form.status,
+      erstelltAm: form.created_time,
+      felder: (form.questions || []).map((q) => ({
+        key: q.key,
+        label: q.label,
+        typ: q.type,
+        istStandard: standardFelder.has(q.key),
+        optionen: q.options?.map((o) => o.value) || [],
+      })),
+    }));
+
+    res.json({ erfolg: true, daten: forms });
+  } catch (fehler) {
+    next(fehler);
+  }
+});

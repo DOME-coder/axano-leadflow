@@ -7,6 +7,7 @@ import { benutzeKampagneErstellen, benutzeKiGenerierung } from '@/hooks/benutze-
 import { benutzeTemplates } from '@/hooks/benutze-templates';
 import { benutzeTemplateErstellen } from '@/hooks/benutze-templates';
 import { benutzeKunden, benutzeKundeErstellen } from '@/hooks/benutze-kunden';
+import { benutzeFacebookForms } from '@/hooks/benutze-kunden-integrationen';
 import { KanalKonfiguration, type KanalKonfigurationWerte } from '@/components/kampagnen/kanal-konfiguration';
 import { useToastStore } from '@/stores/toast-store';
 
@@ -104,7 +105,9 @@ function NeueKampagneInhalt() {
   const kiGenerierung = benutzeKiGenerierung();
   const templateErstellen = benutzeTemplateErstellen();
 
-  // Facebook-Feldmapping
+  // Facebook Lead Forms
+  const { data: facebookForms } = benutzeFacebookForms(kundeId || '');
+  const [ausgewaehlteForms, setAusgewaehlteForms] = useState<string[]>([]);
   const [facebookFeldMappings, setFacebookFeldMappings] = useState<FacebookFeldMapping[]>([]);
 
   const kiGenerieren = async () => {
@@ -260,12 +263,31 @@ function NeueKampagneInhalt() {
         finalKundeId = neuerKunde.id;
       }
 
-      // Trigger-Konfiguration mit Facebook-Feldmappings
+      // Trigger-Konfiguration mit Facebook-Forms + Feldmappings
       const triggerKonfiguration: Record<string, unknown> = {};
-      if (triggerTyp === 'facebook_lead_ads' && facebookFeldMappings.length > 0) {
-        triggerKonfiguration.feldMappings = facebookFeldMappings.filter(
-          (m) => m.facebookFeldname.trim() && m.kampagneFeldname.trim()
-        );
+      if (triggerTyp === 'facebook_lead_ads') {
+        if (ausgewaehlteForms.length > 0) {
+          triggerKonfiguration.form_ids = ausgewaehlteForms;
+          // Felder aus den ausgewaehlten Forms automatisch als Kampagnen-Felder uebernehmen
+          const formFelder = facebookForms
+            ?.filter((f) => ausgewaehlteForms.includes(f.id))
+            .flatMap((f) => f.felder.filter((feld) => !feld.istStandard)) || [];
+          // Automatisch als Kampagnen-Formularfelder setzen (falls noch keine manuell definiert)
+          if (felder.length === 0 && formFelder.length > 0) {
+            setFelder(formFelder.map((f, i) => ({
+              feldname: f.key.replace(/\s+/g, '_').toLowerCase(),
+              bezeichnung: f.label,
+              feldtyp: f.optionen.length > 0 ? 'auswahl' : 'text',
+              pflichtfeld: false,
+              reihenfolge: i,
+            })));
+          }
+        }
+        if (facebookFeldMappings.length > 0) {
+          triggerKonfiguration.feldMappings = facebookFeldMappings.filter(
+            (m) => m.facebookFeldname.trim() && m.kampagneFeldname.trim()
+          );
+        }
       }
 
       const kampagne = await erstellen.mutateAsync({
@@ -549,52 +571,104 @@ function NeueKampagneInhalt() {
               ))}
             </div>
 
-            {/* Facebook-Feldmapping */}
+            {/* Facebook Lead Form Auswahl */}
             {triggerTyp === 'facebook_lead_ads' && (
-              <div className="border-t ax-rahmen-leicht pt-4">
-                <h3 className="text-sm font-semibold ax-titel mb-2">Facebook-Formularfeld-Mapping</h3>
-                <p className="text-xs ax-text-sekundaer mb-3">
-                  Ordnen Sie Facebook-Formularfelder den Kampagnenfeldern zu. Standard-Felder (first_name, last_name, email, phone_number) werden automatisch gemappt.
-                </p>
-                {facebookFeldMappings.map((mapping, index) => (
-                  <div key={index} className="flex gap-2 items-center mb-2">
-                    <input
-                      type="text"
-                      value={mapping.facebookFeldname}
-                      onChange={(e) => {
-                        const aktualisiert = [...facebookFeldMappings];
-                        aktualisiert[index] = { ...aktualisiert[index], facebookFeldname: e.target.value };
-                        setFacebookFeldMappings(aktualisiert);
-                      }}
-                      className="flex-1 px-3 py-2 text-sm rounded-lg ax-eingabe"
-                      placeholder="Facebook-Feldname (z.B. geschlecht_deines_pferdes)"
-                    />
-                    <span className="ax-text-tertiaer text-xs">→</span>
-                    <input
-                      type="text"
-                      value={mapping.kampagneFeldname}
-                      onChange={(e) => {
-                        const aktualisiert = [...facebookFeldMappings];
-                        aktualisiert[index] = { ...aktualisiert[index], kampagneFeldname: e.target.value };
-                        setFacebookFeldMappings(aktualisiert);
-                      }}
-                      className="flex-1 px-3 py-2 text-sm rounded-lg ax-eingabe"
-                      placeholder="Kampagnenfeld (z.B. pferd_geschlecht)"
-                    />
-                    <button
-                      onClick={() => setFacebookFeldMappings(facebookFeldMappings.filter((_, i) => i !== index))}
-                      className="text-red-400 hover:text-red-600 p-1 transition-colors"
-                    >
-                      ×
-                    </button>
+              <div className="border-t ax-rahmen-leicht pt-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold ax-titel mb-1">Facebook-Formulare auswählen</h3>
+                  <p className="text-xs ax-text-sekundaer mb-3">
+                    Wähle die Lead-Formulare aus, deren Leads in dieser Kampagne landen sollen. Die Felder werden automatisch erkannt.
+                  </p>
+                </div>
+
+                {!kundeId ? (
+                  <div className="text-xs ax-text-tertiaer bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                    Bitte wähle zuerst einen Kunden aus (Schritt 1), der Facebook verbunden hat.
                   </div>
-                ))}
-                <button
-                  onClick={() => setFacebookFeldMappings([...facebookFeldMappings, { facebookFeldname: '', kampagneFeldname: '' }])}
-                  className="w-full border-2 border-dashed ax-rahmen border-[var(--rahmen)] ax-text-sekundaer hover:border-axano-orange hover:text-axano-orange rounded-lg py-2 text-xs font-medium transition-all"
-                >
-                  + Feldmapping hinzufügen
-                </button>
+                ) : !facebookForms ? (
+                  <div className="text-xs ax-text-tertiaer">Lade Facebook-Formulare...</div>
+                ) : facebookForms.length === 0 ? (
+                  <div className="text-xs ax-text-tertiaer bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                    Keine Facebook-Formulare gefunden. Bitte prüfe ob der Kunde Facebook verbunden hat und ob Lead-Formulare auf der Seite existieren.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {facebookForms.map((form) => {
+                      const istAusgewaehlt = ausgewaehlteForms.includes(form.id);
+                      const customFelder = form.felder.filter((f) => !f.istStandard);
+                      const standardFelder = form.felder.filter((f) => f.istStandard);
+
+                      return (
+                        <button
+                          key={form.id}
+                          type="button"
+                          onClick={() => {
+                            setAusgewaehlteForms((prev) =>
+                              istAusgewaehlt
+                                ? prev.filter((id) => id !== form.id)
+                                : [...prev, form.id]
+                            );
+                          }}
+                          className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                            istAusgewaehlt
+                              ? 'border-axano-orange bg-orange-50/50 dark:bg-orange-900/20'
+                              : 'ax-rahmen border-[var(--rahmen)] hover:border-[var(--text-tertiaer)]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium ax-titel">{form.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                form.status === 'ACTIVE'
+                                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                              }`}>
+                                {form.status === 'ACTIVE' ? 'Aktiv' : form.status}
+                              </span>
+                              <div className={`w-5 h-5 rounded flex items-center justify-center text-xs ${
+                                istAusgewaehlt ? 'bg-axano-orange text-white' : 'border ax-rahmen-leicht'
+                              }`}>
+                                {istAusgewaehlt && '✓'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-xs ax-text-sekundaer">
+                            {standardFelder.length > 0 && (
+                              <span className="text-green-600 dark:text-green-400">
+                                ✅ {standardFelder.map((f) => f.label).join(', ')}
+                              </span>
+                            )}
+                            {customFelder.length > 0 && (
+                              <span className="ml-2">
+                                📋 {customFelder.map((f) => f.label).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {ausgewaehlteForms.length > 0 && facebookForms && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                    <p className="text-xs font-medium text-blue-700 dark:text-blue-400 mb-1">
+                      Erkannte Felder aus {ausgewaehlteForms.length === 1 ? 'dem Formular' : `${ausgewaehlteForms.length} Formularen`}:
+                    </p>
+                    <div className="text-xs text-blue-600 dark:text-blue-300 space-y-0.5">
+                      {facebookForms
+                        .filter((f) => ausgewaehlteForms.includes(f.id))
+                        .flatMap((f) => f.felder)
+                        .filter((feld, index, self) => self.findIndex((f) => f.key === feld.key) === index)
+                        .map((feld) => (
+                          <div key={feld.key}>
+                            {feld.istStandard ? '✅' : '📋'} {feld.label}
+                            {feld.istStandard && <span className="ml-1 opacity-60">(automatisch)</span>}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Save, Copy, Check } from 'lucide-react';
 import { benutzeKampagne } from '@/hooks/benutze-kampagnen';
 import { benutzeKampagneEinstellungenSpeichern } from '@/hooks/benutze-kampagne-einstellungen';
+import { benutzeFacebookForms } from '@/hooks/benutze-kunden-integrationen';
 import { benutzeTemplates } from '@/hooks/benutze-templates';
 import { KanalKonfiguration, type KanalKonfigurationWerte } from '@/components/kampagnen/kanal-konfiguration';
 import { useToastStore } from '@/stores/toast-store';
@@ -154,8 +155,15 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
               {triggerBezeichnungen[kampagne.triggerTyp] || kampagne.triggerTyp}
             </span>
-            <span className="text-xs ax-text-tertiaer">Kann nach Erstellung nicht geaendert werden</span>
           </div>
+          {/* Facebook Form-Auswahl (nachtraeglich aenderbar) */}
+          {kampagne.triggerTyp === 'facebook_lead_ads' && kampagne.kundeId && (
+            <FacebookFormAuswahl
+              kundeId={kampagne.kundeId}
+              aktuelleFormIds={((kampagne as unknown as Record<string, unknown>).triggerKonfiguration as Record<string, unknown>)?.form_ids as string[] || []}
+              kampagneId={id}
+            />
+          )}
           {webhookUrl && (
             <div className="mt-3">
               <label className="text-xs font-medium ax-text-sekundaer mb-1 block">Webhook-URL</label>
@@ -196,6 +204,73 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
           Einstellungen speichern
         </button>
       </div>
+    </div>
+  );
+}
+
+function FacebookFormAuswahl({ kundeId, aktuelleFormIds, kampagneId }: { kundeId: string; aktuelleFormIds: string[]; kampagneId: string }) {
+  const { data: forms, isLoading } = benutzeFacebookForms(kundeId);
+  const speichern = benutzeKampagneEinstellungenSpeichern();
+  const { toastAnzeigen } = useToastStore();
+  const [ausgewaehlt, setAusgewaehlt] = useState<string[]>(aktuelleFormIds);
+
+  useEffect(() => { setAusgewaehlt(aktuelleFormIds); }, [aktuelleFormIds]);
+
+  const formsSpeichern = async () => {
+    try {
+      await speichern.mutateAsync({
+        id: kampagneId,
+        triggerKonfiguration: { form_ids: ausgewaehlt },
+      } as Record<string, unknown> & { id: string });
+      toastAnzeigen('erfolg', 'Facebook-Formulare aktualisiert');
+    } catch {
+      toastAnzeigen('fehler', 'Fehler beim Speichern der Formulare');
+    }
+  };
+
+  if (isLoading) return <div className="text-xs ax-text-tertiaer mt-3">Lade Facebook-Formulare...</div>;
+  if (!forms?.length) return <div className="text-xs ax-text-tertiaer mt-3">Keine Facebook-Formulare gefunden.</div>;
+
+  return (
+    <div className="mt-3 space-y-2">
+      <label className="text-xs font-medium ax-text-sekundaer">Facebook-Formulare</label>
+      <div className="space-y-1.5">
+        {forms.map((form) => {
+          const istAktiv = ausgewaehlt.includes(form.id);
+          return (
+            <button
+              key={form.id}
+              type="button"
+              onClick={() => setAusgewaehlt((prev) =>
+                istAktiv ? prev.filter((id) => id !== form.id) : [...prev, form.id]
+              )}
+              className={`w-full text-left px-3 py-2 rounded-lg border transition-all text-xs ${
+                istAktiv
+                  ? 'border-axano-orange bg-orange-50/50 dark:bg-orange-900/20'
+                  : 'ax-rahmen border-[var(--rahmen)] ax-hover'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-medium ax-titel">{form.name}</span>
+                <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${
+                  istAktiv ? 'bg-axano-orange text-white' : 'border ax-rahmen-leicht'
+                }`}>
+                  {istAktiv && '✓'}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {JSON.stringify(ausgewaehlt) !== JSON.stringify(aktuelleFormIds) && (
+        <button
+          onClick={formsSpeichern}
+          disabled={speichern.isPending}
+          className="bg-axano-orange hover:bg-orange-600 text-white font-medium px-3 py-1.5 rounded-lg text-xs disabled:opacity-50"
+        >
+          {speichern.isPending ? 'Speichern...' : 'Formulare aktualisieren'}
+        </button>
+      )}
     </div>
   );
 }

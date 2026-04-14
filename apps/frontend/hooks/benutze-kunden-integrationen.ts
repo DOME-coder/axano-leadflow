@@ -83,3 +83,31 @@ export function benutzeFacebookOAuthUrl(kundeId: string) {
     },
   });
 }
+
+interface FacebookFormFeld {
+  key: string;
+  label: string;
+  typ: string;
+  istStandard: boolean;
+  optionen: string[];
+}
+
+interface FacebookForm {
+  id: string;
+  name: string;
+  status: string;
+  erstelltAm?: string;
+  felder: FacebookFormFeld[];
+}
+
+export function benutzeFacebookForms(kundeId: string) {
+  return useQuery({
+    queryKey: ['facebook-forms', kundeId],
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/facebook/forms`);
+      return data.daten as FacebookForm[];
+    },
+    enabled: !!kundeId,
+    staleTime: 60000, // 1 Min Cache
+  });
+}
