@@ -101,8 +101,8 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
               <textarea
                 value={werte.vapiPrompt}
                 onChange={(e) => onAendern('vapiPrompt', e.target.value)}
-                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-none"
-                rows={3}
+                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                rows={8}
                 placeholder="Leer lassen für Standard-Prompt"
               />
             </div>
@@ -121,8 +121,8 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
               <textarea
                 value={werte.vapiVoicemailNachricht}
                 onChange={(e) => onAendern('vapiVoicemailNachricht', e.target.value)}
-                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-none"
-                rows={2}
+                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                rows={4}
                 placeholder="Nachricht die auf der Mailbox hinterlassen wird"
               />
             </div>
@@ -268,32 +268,35 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
                 placeholder="mc_xxx"
               />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium ax-text">Template: Verpasst</label>
-                <input
+                <textarea
                   value={werte.whatsappTemplateVerpasst}
                   onChange={(e) => onAendern('whatsappTemplateVerpasst', e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
-                  placeholder="tn_xxx"
+                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                  rows={3}
+                  placeholder="Hallo {{vorname}}, wir haben versucht dich zu erreichen..."
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium ax-text">Template: Nicht erreichbar</label>
-                <input
+                <textarea
                   value={werte.whatsappTemplateUnerreichbar}
                   onChange={(e) => onAendern('whatsappTemplateUnerreichbar', e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
-                  placeholder="tn_xxx"
+                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                  rows={3}
+                  placeholder="Hallo {{vorname}}, leider konnten wir dich bisher nicht erreichen..."
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium ax-text">Template: Nicht interessiert</label>
-                <input
+                <textarea
                   value={werte.whatsappTemplateNichtInteressiert}
                   onChange={(e) => onAendern('whatsappTemplateNichtInteressiert', e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
-                  placeholder="tn_xxx"
+                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                  rows={3}
+                  placeholder="Hallo {{vorname}}, vielen Dank für dein ehrliches Feedback..."
                 />
               </div>
             </div>
