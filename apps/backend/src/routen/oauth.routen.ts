@@ -262,78 +262,124 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
     } catch { /* nur Diagnose, kein Abbruch */ }
 
     // Schritt 2: Seiten des Users abrufen
-    // Versuch 1: /me/accounts (klassisches Facebook Login)
-    // Versuch 2: /me/accounts mit limit (manchmal noetig)
-    // Versuch 3: Business-API Fallback
+    // Bei "Facebook Login for Business" gibt /me/accounts ein leeres Array zurueck.
+    // Wir muessen stattdessen ueber die Business-Asset-API gehen oder die Seiten-IDs
+    // direkt per /me abrufen (mit dem granted_scopes Feld).
     let seitenListe: Array<{ id: string; name: string; access_token: string }> = [];
 
-    // Versuch 1: Standard /me/accounts
-    const seitenAntwort = await fetch(
-      `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`,
-      { signal: AbortSignal.timeout(10000) }
-    );
-
-    if (seitenAntwort.ok) {
-      const seitenRoh = await seitenAntwort.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
-      logger.info('Facebook /me/accounts Antwort:', { anzahl: seitenRoh.data?.length || 0 });
-      seitenListe = seitenRoh.data || [];
-    } else {
-      const seitenFehler = await seitenAntwort.text();
-      logger.error('Facebook /me/accounts fehlgeschlagen:', { status: seitenAntwort.status, body: seitenFehler });
-    }
-
-    // Versuch 2: Falls leer, probiere ueber /me/businesses → /{business_id}/owned_pages
-    if (seitenListe.length === 0) {
-      logger.info('Facebook OAuth: /me/accounts leer — versuche Business-API...');
-      try {
-        const bizAntwort = await fetch(
-          `https://graph.facebook.com/v18.0/me/businesses?access_token=${userToken}&fields=id,name`,
-          { signal: AbortSignal.timeout(10000) }
-        );
-        if (bizAntwort.ok) {
-          const bizDaten = await bizAntwort.json() as { data?: Array<{ id: string; name: string }> };
-          logger.info('Facebook /me/businesses:', { anzahl: bizDaten.data?.length || 0 });
-
-          for (const biz of bizDaten.data || []) {
-            const pagesAntwort = await fetch(
-              `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?access_token=${userToken}&fields=id,name,access_token&limit=100`,
-              { signal: AbortSignal.timeout(10000) }
-            );
-            if (pagesAntwort.ok) {
-              const pagesDaten = await pagesAntwort.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
-              if (pagesDaten.data?.length) {
-                logger.info(`Facebook: ${pagesDaten.data.length} Seiten gefunden ueber Business "${biz.name}"`);
-                seitenListe.push(...pagesDaten.data);
-              }
-            }
-          }
-        }
-      } catch (bizFehler) {
-        logger.warn('Facebook Business-API Fallback fehlgeschlagen:', { error: bizFehler });
+    // Versuch 1: Standard /me/accounts (funktioniert bei klassischem Facebook Login)
+    try {
+      const seitenAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (seitenAntwort.ok) {
+        const seitenRoh = await seitenAntwort.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
+        logger.info('Facebook /me/accounts:', { anzahl: seitenRoh.data?.length || 0 });
+        seitenListe = seitenRoh.data || [];
       }
-    }
+    } catch { logger.warn('Facebook /me/accounts Timeout'); }
 
-    // Versuch 3: Falls immer noch leer, probiere /me?fields=accounts
+    // Versuch 2: User-ID holen und direkt /{user_id}/accounts probieren
     if (seitenListe.length === 0) {
-      logger.info('Facebook OAuth: Business-API auch leer — versuche /me?fields=accounts...');
+      logger.info('Facebook OAuth: /me/accounts leer — versuche /{user_id}/accounts...');
       try {
         const meAntwort = await fetch(
-          `https://graph.facebook.com/v18.0/me?access_token=${userToken}&fields=accounts{id,name,access_token}`,
+          `https://graph.facebook.com/v18.0/me?access_token=${userToken}&fields=id,name`,
           { signal: AbortSignal.timeout(10000) }
         );
         if (meAntwort.ok) {
-          const meDaten = await meAntwort.json() as { accounts?: { data?: Array<{ id: string; name: string; access_token: string }> } };
-          if (meDaten.accounts?.data?.length) {
-            logger.info(`Facebook: ${meDaten.accounts.data.length} Seiten gefunden ueber /me?fields=accounts`);
-            seitenListe.push(...meDaten.accounts.data);
+          const meDaten = await meAntwort.json() as { id: string; name: string };
+          logger.info('Facebook User:', { id: meDaten.id, name: meDaten.name });
+
+          const userPagesAntwort = await fetch(
+            `https://graph.facebook.com/v18.0/${meDaten.id}/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`,
+            { signal: AbortSignal.timeout(10000) }
+          );
+          if (userPagesAntwort.ok) {
+            const userPages = await userPagesAntwort.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
+            logger.info('Facebook /{user_id}/accounts:', { anzahl: userPages.data?.length || 0 });
+            seitenListe = userPages.data || [];
           }
         }
-      } catch { /* letzter Versuch, ignoriere Fehler */ }
+      } catch { logger.warn('Facebook /{user_id}/accounts Timeout'); }
+    }
+
+    // Versuch 3: Business-API — direkt mit bekannter Business-ID oder ueber /me/businesses
+    if (seitenListe.length === 0) {
+      logger.info('Facebook OAuth: user accounts leer — versuche Business-owned-pages...');
+      try {
+        // Erst alle Businesses des Users finden
+        const bizAntwort = await fetch(
+          `https://graph.facebook.com/v18.0/me/businesses?access_token=${userToken}&fields=id,name,owned_pages.limit(100){id,name,access_token}`,
+          { signal: AbortSignal.timeout(15000) }
+        );
+        if (bizAntwort.ok) {
+          const bizRoh = await bizAntwort.json() as {
+            data?: Array<{
+              id: string;
+              name: string;
+              owned_pages?: { data?: Array<{ id: string; name: string; access_token: string }> };
+            }>;
+          };
+          logger.info('Facebook /me/businesses:', { anzahl: bizRoh.data?.length || 0, raw: JSON.stringify(bizRoh).substring(0, 300) });
+
+          for (const biz of bizRoh.data || []) {
+            if (biz.owned_pages?.data?.length) {
+              logger.info(`Facebook: ${biz.owned_pages.data.length} Seiten via Business "${biz.name}"`);
+              seitenListe.push(...biz.owned_pages.data);
+            } else {
+              // Fallback: owned_pages separat abrufen
+              const pAntwort = await fetch(
+                `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?access_token=${userToken}&fields=id,name,access_token&limit=100`,
+                { signal: AbortSignal.timeout(10000) }
+              );
+              if (pAntwort.ok) {
+                const pDaten = await pAntwort.json() as { data?: Array<{ id: string; name: string; access_token: string }> };
+                if (pDaten.data?.length) {
+                  logger.info(`Facebook: ${pDaten.data.length} Seiten via /${biz.id}/owned_pages`);
+                  seitenListe.push(...pDaten.data);
+                }
+              } else {
+                const pFehler = await pAntwort.text();
+                logger.warn(`Facebook /${biz.id}/owned_pages fehlgeschlagen:`, { body: pFehler.substring(0, 200) });
+              }
+            }
+          }
+        } else {
+          const bizFehler = await bizAntwort.text();
+          logger.warn('Facebook /me/businesses fehlgeschlagen:', { body: bizFehler.substring(0, 200) });
+        }
+      } catch (bizErr) {
+        logger.warn('Facebook Business-API Fehler:', { error: bizErr });
+      }
+    }
+
+    // Versuch 4: Direkt per Page-ID abfragen (falls wir die Seiten-ID aus dem OAuth-Dialog kennen)
+    // Der OAuth-Dialog zeigt dem User seine Seiten — die gewaehlte Page-ID koennte im
+    // "granted_scopes" oder in einem separaten API-Aufruf stecken
+    if (seitenListe.length === 0) {
+      logger.info('Facebook OAuth: Business-API auch leer — versuche /me?fields=accounts...');
+      try {
+        const meFullAntwort = await fetch(
+          `https://graph.facebook.com/v18.0/me?access_token=${userToken}&fields=id,name,accounts{id,name,access_token}`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (meFullAntwort.ok) {
+          const meFullDaten = await meFullAntwort.json() as {
+            accounts?: { data?: Array<{ id: string; name: string; access_token: string }> };
+          };
+          logger.info('Facebook /me?fields=accounts:', { anzahl: meFullDaten.accounts?.data?.length || 0, raw: JSON.stringify(meFullDaten).substring(0, 300) });
+          if (meFullDaten.accounts?.data?.length) {
+            seitenListe.push(...meFullDaten.accounts.data);
+          }
+        }
+      } catch { /* letzter Versuch */ }
     }
 
     if (seitenListe.length === 0) {
-      logger.warn('Facebook OAuth: Keine Seiten gefunden nach allen 3 Versuchen');
-      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Keine Facebook-Seiten gefunden. Moeglicherweise muss die App im Meta Developer Portal als Business-App mit Seiten-Zugriff konfiguriert werden.')}`);
+      logger.error('Facebook OAuth: Keine Seiten nach 4 Versuchen. Token-Typ ist wahrscheinlich "Facebook Login for Business" der keinen Page-Zugriff gibt. Manuelle Konfiguration noetig.');
+      res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=fehler&grund=${encodeURIComponent('Keine Facebook-Seiten gefunden. Bei "Facebook Login for Business" muessen die Seiten moeglicherweise manuell in der Kunden-Integration konfiguriert werden.')}`);
       return;
     }
 
