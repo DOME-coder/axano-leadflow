@@ -139,46 +139,65 @@ export function FacebookDiagnoseModal({
                 )}
               </div>
 
-              {/* Alle Seiten des Nutzers (wenn mehrere) */}
-              {diagnose.alleSeiten.length > 1 && (
+              {/* Alle Seiten des Nutzers */}
+              {diagnose.alleSeiten.length > 0 && (
                 <div>
                   <h3 className="ax-label mb-2">
-                    Alle Seiten des Kunden ({diagnose.alleSeiten.length})
+                    Gefundene Seiten ({diagnose.alleSeiten.length})
                   </h3>
                   <div className="space-y-1.5">
-                    {diagnose.alleSeiten.map((seite) => (
-                      <div
-                        key={seite.id}
-                        className="rounded-lg p-3 flex items-center justify-between gap-3"
-                        style={{
-                          backgroundColor: seite.istVerbunden ? 'var(--akzent-orange-sanft)' : 'var(--karte-erhoeht)',
-                          border: seite.istVerbunden
-                            ? '1px solid var(--akzent-orange-rand)'
-                            : '1px solid var(--rahmen-leicht)',
-                        }}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Globe className="w-3.5 h-3.5 ax-text-tertiaer flex-shrink-0" strokeWidth={2} />
-                          <span className="text-sm font-medium ax-titel truncate">{seite.name}</span>
-                          {seite.istVerbunden && (
+                    {diagnose.alleSeiten.map((seite) => {
+                      const quelleLabel =
+                        seite.quelle === 'persoenlich'
+                          ? 'Persönlich'
+                          : seite.quelle === 'business-owned'
+                            ? `Business · ${seite.businessName || ''}`
+                            : `Client · ${seite.businessName || ''}`;
+                      return (
+                        <div
+                          key={seite.id}
+                          className="rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
+                          style={{
+                            backgroundColor: seite.istVerbunden ? 'var(--akzent-orange-sanft)' : 'var(--karte-erhoeht)',
+                            border: seite.istVerbunden
+                              ? '1px solid var(--akzent-orange-rand)'
+                              : '1px solid var(--rahmen-leicht)',
+                          }}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Globe className="w-3.5 h-3.5 ax-text-tertiaer flex-shrink-0" strokeWidth={2} />
+                            <span className="text-sm font-medium ax-titel truncate">{seite.name}</span>
                             <span
                               className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-sm flex-shrink-0"
                               style={{
-                                backgroundColor: 'var(--axano-orange)',
-                                color: 'white',
+                                backgroundColor: 'var(--karte)',
+                                color: 'var(--text-sekundaer)',
+                                border: '1px solid var(--rahmen-leicht)',
                               }}
+                              title={quelleLabel}
                             >
-                              Verbunden
+                              {quelleLabel}
                             </span>
-                          )}
+                            {seite.istVerbunden && (
+                              <span
+                                className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-sm flex-shrink-0"
+                                style={{
+                                  backgroundColor: 'var(--axano-orange)',
+                                  color: 'white',
+                                }}
+                              >
+                                Verbunden
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs ax-text-sekundaer tabular-nums flex-shrink-0">
+                            {seite.formFehler
+                              ? `Fehler: ${seite.formFehler}`
+                              : `${seite.formAnzahl ?? 0} Formular${(seite.formAnzahl ?? 0) === 1 ? '' : 'e'}`}
+                          </span>
                         </div>
-                        <span className="text-xs ax-text-sekundaer tabular-nums flex-shrink-0">
-                          {seite.formFehler
-                            ? `Fehler: ${seite.formFehler}`
-                            : `${seite.formAnzahl ?? 0} Formular${(seite.formAnzahl ?? 0) === 1 ? '' : 'e'}`}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

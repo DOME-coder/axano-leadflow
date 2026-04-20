@@ -118,6 +118,8 @@ export interface FacebookDiagnoseSeite {
   id: string;
   name: string;
   istVerbunden: boolean;
+  quelle: 'persoenlich' | 'business-owned' | 'business-client';
+  businessName?: string;
   formAnzahl?: number;
   formFehler?: string;
 }

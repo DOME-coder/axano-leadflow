@@ -258,6 +258,8 @@ kundenIntegrationenRouter.get('/facebook/diagnose', async (req: Request, res: Re
       id: string;
       name: string;
       istVerbunden: boolean;
+      quelle: 'persoenlich' | 'business-owned' | 'business-client';
+      businessName?: string;
       formAnzahl?: number;
       formFehler?: string;
     }
@@ -330,71 +332,162 @@ kundenIntegrationenRouter.get('/facebook/diagnose', async (req: Request, res: Re
       );
     }
 
-    // 2. Alle Seiten des Nutzers pruefen (um zu sehen, ob Formular auf anderer Seite liegt)
+    // 2. Seiten aus DREI Quellen sammeln (persoenlich, Business-owned, Business-client)
+    interface GefundeneSeite {
+      id: string;
+      name: string;
+      access_token?: string;
+      quelle: 'persoenlich' | 'business-owned' | 'business-client';
+      businessName?: string;
+    }
+    const seitenSammlung = new Map<string, GefundeneSeite>();
+
+    // 2a. Persoenliche Seiten
     try {
-      const seitenAntwort = await fetch(
+      const antwort = await fetch(
         `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`,
         { signal: AbortSignal.timeout(10000) }
       );
-      if (seitenAntwort.ok) {
-        const seitenJson = await seitenAntwort.json() as {
-          data?: Array<{ id: string; name: string; access_token?: string }>;
-        };
-        const seiten = seitenJson.data || [];
-
-        // Fuer jede Seite die Formulare zaehlen
-        for (const seite of seiten) {
-          const seiteBefund: DiagnoseSeite = {
-            id: seite.id,
-            name: seite.name,
-            istVerbunden: seite.id === fbKonfig.page_id,
-          };
-
-          if (seite.access_token) {
-            try {
-              const formsAntwort = await fetch(
-                `https://graph.facebook.com/v18.0/${seite.id}/leadgen_forms?access_token=${seite.access_token}&fields=id,name,status,created_time,questions&limit=100`,
-                { signal: AbortSignal.timeout(10000) }
-              );
-              if (formsAntwort.ok) {
-                const formsJson = await formsAntwort.json() as {
-                  data?: Array<{ id: string; name: string; status: string; questions?: Array<{ key: string }> }>;
-                };
-                const forms = formsJson.data || [];
-                seiteBefund.formAnzahl = forms.length;
-
-                // Formulare zur Gesamt-Liste hinzufuegen
-                for (const form of forms) {
-                  befund.formulare.push({
-                    id: form.id,
-                    name: form.name,
-                    status: form.status,
-                    seiteId: seite.id,
-                    seiteName: seite.name,
-                    felderAnzahl: form.questions?.length || 0,
-                  });
-                }
-              } else {
-                const fehlerText = await formsAntwort.text();
-                try {
-                  const fbJson = JSON.parse(fehlerText) as { error?: { message?: string } };
-                  seiteBefund.formFehler = fbJson.error?.message || 'Unbekannter Fehler';
-                } catch {
-                  seiteBefund.formFehler = `HTTP ${formsAntwort.status}`;
-                }
-              }
-            } catch (fehler) {
-              seiteBefund.formFehler = fehler instanceof Error ? fehler.message : 'Netzwerkfehler';
-            }
-          } else {
-            seiteBefund.formFehler = 'Kein Seiten-Token';
+      if (antwort.ok) {
+        const json = await antwort.json() as { data?: Array<{ id: string; name: string; access_token?: string }> };
+        for (const seite of json.data || []) {
+          if (!seitenSammlung.has(seite.id)) {
+            seitenSammlung.set(seite.id, { ...seite, quelle: 'persoenlich' });
           }
-
-          befund.alleSeiten.push(seiteBefund);
         }
       }
     } catch (fehler) {
-      logger.warn('Facebook Seitenliste konnte nicht abgerufen werden', { error: fehler });
+      logger.warn('Facebook /me/accounts fehlgeschlagen', { error: fehler });
+    }
+
+    // 2b. Business-Manager: eigene Seiten + Client-Seiten
+    try {
+      const bizAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/me/businesses?access_token=${userToken}&fields=id,name&limit=50`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (bizAntwort.ok) {
+        const bizJson = await bizAntwort.json() as { data?: Array<{ id: string; name: string }> };
+        const businesses = bizJson.data || [];
+
+        for (const biz of businesses) {
+          // owned_pages (Business besitzt die Seite selbst)
+          try {
+            const ownedAntwort = await fetch(
+              `https://graph.facebook.com/v18.0/${biz.id}/owned_pages?access_token=${userToken}&fields=id,name,access_token&limit=100`,
+              { signal: AbortSignal.timeout(10000) }
+            );
+            if (ownedAntwort.ok) {
+              const json = await ownedAntwort.json() as { data?: Array<{ id: string; name: string; access_token?: string }> };
+              for (const seite of json.data || []) {
+                if (!seitenSammlung.has(seite.id)) {
+                  seitenSammlung.set(seite.id, { ...seite, quelle: 'business-owned', businessName: biz.name });
+                }
+              }
+            }
+          } catch (fehler) {
+            logger.warn(`Facebook owned_pages fuer Business ${biz.id} fehlgeschlagen`, { error: fehler });
+          }
+
+          // client_pages (Kundenseiten, die das Business verwaltet – typisch fuer Agenturen)
+          try {
+            const clientAntwort = await fetch(
+              `https://graph.facebook.com/v18.0/${biz.id}/client_pages?access_token=${userToken}&fields=id,name,access_token&limit=100`,
+              { signal: AbortSignal.timeout(10000) }
+            );
+            if (clientAntwort.ok) {
+              const json = await clientAntwort.json() as { data?: Array<{ id: string; name: string; access_token?: string }> };
+              for (const seite of json.data || []) {
+                if (!seitenSammlung.has(seite.id)) {
+                  seitenSammlung.set(seite.id, { ...seite, quelle: 'business-client', businessName: biz.name });
+                }
+              }
+            }
+          } catch (fehler) {
+            logger.warn(`Facebook client_pages fuer Business ${biz.id} fehlgeschlagen`, { error: fehler });
+          }
+        }
+      }
+    } catch (fehler) {
+      logger.warn('Facebook /me/businesses fehlgeschlagen', { error: fehler });
+    }
+
+    // 2c. Fallback: verbundene Seite ist in keiner Liste (z. B. weil Scope fehlt) → trotzdem aufnehmen
+    if (!seitenSammlung.has(fbKonfig.page_id)) {
+      seitenSammlung.set(fbKonfig.page_id, {
+        id: fbKonfig.page_id,
+        name: fbKonfig.page_name || '(verbundene Seite)',
+        access_token: fbKonfig.page_access_token,
+        quelle: 'persoenlich',
+      });
+    }
+
+    // 3. Fuer jede gefundene Seite Formulare abrufen
+    for (const seite of seitenSammlung.values()) {
+      const seiteBefund: DiagnoseSeite = {
+        id: seite.id,
+        name: seite.name,
+        istVerbunden: seite.id === fbKonfig.page_id,
+        quelle: seite.quelle,
+        businessName: seite.businessName,
+      };
+
+      // Page-Token besorgen: aus Sammlung oder explizit anfragen (fuer Business-Seiten ohne Token)
+      let pageToken = seite.access_token;
+      if (!pageToken && seite.id === fbKonfig.page_id) {
+        pageToken = fbKonfig.page_access_token;
+      }
+      if (!pageToken) {
+        try {
+          const tokenAntwort = await fetch(
+            `https://graph.facebook.com/v18.0/${seite.id}?fields=access_token&access_token=${userToken}`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (tokenAntwort.ok) {
+            const j = await tokenAntwort.json() as { access_token?: string };
+            pageToken = j.access_token;
+          }
+        } catch { /* weiter */ }
+      }
+
+      const formsToken = pageToken || userToken;
+
+      try {
+        const formsAntwort = await fetch(
+          `https://graph.facebook.com/v18.0/${seite.id}/leadgen_forms?access_token=${formsToken}&fields=id,name,status,created_time,questions&limit=100`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        if (formsAntwort.ok) {
+          const formsJson = await formsAntwort.json() as {
+            data?: Array<{ id: string; name: string; status: string; questions?: Array<{ key: string }> }>;
+          };
+          const forms = formsJson.data || [];
+          seiteBefund.formAnzahl = forms.length;
+
+          for (const form of forms) {
+            befund.formulare.push({
+              id: form.id,
+              name: form.name,
+              status: form.status,
+              seiteId: seite.id,
+              seiteName: seite.name,
+              felderAnzahl: form.questions?.length || 0,
+            });
+          }
+        } else {
+          const fehlerText = await formsAntwort.text();
+          try {
+            const fbJson = JSON.parse(fehlerText) as { error?: { message?: string } };
+            seiteBefund.formFehler = fbJson.error?.message || 'Unbekannter Fehler';
+          } catch {
+            seiteBefund.formFehler = `HTTP ${formsAntwort.status}`;
+          }
+        }
+      } catch (fehler) {
+        seiteBefund.formFehler = fehler instanceof Error ? fehler.message : 'Netzwerkfehler';
+      }
+
+      befund.alleSeiten.push(seiteBefund);
     }
 
     // 3. Empfehlungen ableiten
