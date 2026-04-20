@@ -124,38 +124,62 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/20" onClick={onSchliessen} />
+      <div
+        className="absolute inset-0"
+        style={{ backgroundColor: 'rgba(15, 22, 35, 0.35)', backdropFilter: 'blur(2px)' }}
+        onClick={onSchliessen}
+      />
 
       {/* Panel */}
-      <div className="relative w-full max-w-lg ax-karte shadow-xl flex flex-col animate-einblenden rounded-none">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b ax-rahmen-leicht">
-          <h2 className="font-bold ax-titel">Lead-Details</h2>
-          <div className="flex items-center gap-1">
+      <div
+        className="relative w-full max-w-lg flex flex-col animate-einblenden-von-rechts overflow-hidden"
+        style={{
+          backgroundColor: 'var(--karte)',
+          borderLeft: '1px solid var(--rahmen-leicht)',
+          boxShadow: 'var(--schatten-xl), -8px 0 40px -12px rgba(255, 128, 73, 0.08)',
+        }}
+      >
+        {/* Header – sticky mit Glas-Effekt und Gradient-Fade */}
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between px-6 py-4"
+          style={{
+            backgroundColor: 'var(--glas-bg)',
+            backdropFilter: 'blur(12px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(150%)',
+            borderBottom: '1px solid var(--rahmen-leicht)',
+          }}
+        >
+          <h2 className="ax-ueberschrift-3">Lead-Details</h2>
+          <div className="flex items-center gap-1.5">
             <button
               onClick={sofortAnrufenKlick}
               disabled={sofortAnrufen.isPending || !lead || !(lead as { telefon?: string }).telefon}
               title="Sofort anrufen (Test-Modus, umgeht Zeitslot)"
               aria-label="Lead sofort anrufen"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-axano-orange hover:bg-orange-600 text-white text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-all duration-200 ease-sanft disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] ax-fokus-ring"
+              style={{
+                background: 'linear-gradient(180deg, #ff8049 0%, #ea6c37 100%)',
+                boxShadow: '0 1px 2px rgba(234, 108, 55, 0.3), 0 0 0 1px rgba(234, 108, 55, 0.15)',
+              }}
             >
-              <PhoneCall className="w-3.5 h-3.5" />
-              {sofortAnrufen.isPending ? 'Startet...' : 'Sofort anrufen'}
+              <PhoneCall className="w-3.5 h-3.5" strokeWidth={2.2} />
+              {sofortAnrufen.isPending ? 'Startet…' : 'Sofort anrufen'}
             </button>
             <button
               onClick={loeschenKlick}
               disabled={leadLoeschen.isPending || !lead}
               title="Lead löschen"
               aria-label="Lead löschen"
-              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all disabled:opacity-40"
+              className="p-2 rounded-lg ax-text-tertiaer hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200 ease-sanft disabled:opacity-40 ax-fokus-ring"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-4 h-4" strokeWidth={2} />
             </button>
             <button
               onClick={onSchliessen}
-              className="p-1.5 rounded-lg ax-text-tertiaer ax-hover hover:text-[var(--text)] transition-all"
+              aria-label="Schließen"
+              className="p-2 rounded-lg ax-text-tertiaer ax-hover hover:text-[var(--text-titel)] transition-all duration-200 ease-sanft ax-fokus-ring"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" strokeWidth={2} />
             </button>
           </div>
         </div>
@@ -169,89 +193,111 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
         ) : lead ? (
           <div className="flex-1 overflow-y-auto">
             {/* Kontaktdaten */}
-            <div className="px-6 py-4 border-b ax-rahmen-leicht">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 rounded-full bg-axano-primaer flex items-center justify-center text-white font-bold">
+            <div className="px-6 pt-5 pb-5" style={{ borderBottom: '1px solid var(--rahmen-leicht)' }}>
+              <div className="flex items-start gap-4 mb-4">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, #1a2b4c 0%, #2f3d5f 100%)',
+                    boxShadow: '0 4px 12px rgba(26, 43, 76, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                  }}
+                  aria-hidden
+                >
                   {(lead.vorname?.[0] || '?').toUpperCase()}
                 </div>
-                <div>
-                  <h3 className="font-bold ax-titel text-lg">
+                <div className="min-w-0 flex-1">
+                  <h3 className="ax-ueberschrift-2 mb-1.5 truncate">
                     {[lead.vorname, lead.nachname].filter(Boolean).join(' ') || 'Unbekannt'}
                   </h3>
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusFarbeErmitteln(lead.status)}`}>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-md ${statusFarbeErmitteln(lead.status)}`}>
                     {lead.status}
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 pl-[72px] -mt-2">
                 {lead.email && (
-                  <div className="flex items-center gap-2 text-sm ax-text">
-                    <Mail className="w-4 h-4 ax-text-tertiaer" />
-                    {lead.email}
+                  <div className="flex items-center gap-2.5 text-sm ax-text">
+                    <Mail className="w-4 h-4 ax-text-tertiaer flex-shrink-0" strokeWidth={2} />
+                    <span className="truncate">{lead.email}</span>
                   </div>
                 )}
                 {lead.telefon && (
-                  <div className="flex items-center gap-2 text-sm ax-text">
-                    <Phone className="w-4 h-4 ax-text-tertiaer" />
-                    {lead.telefon}
+                  <div className="flex items-center gap-2.5 text-sm ax-text">
+                    <Phone className="w-4 h-4 ax-text-tertiaer flex-shrink-0" strokeWidth={2} />
+                    <span className="tabular-nums">{lead.telefon}</span>
                   </div>
                 )}
                 {lead.zugewiesenAn && (
-                  <div className="flex items-center gap-2 text-sm ax-text">
-                    <User className="w-4 h-4 ax-text-tertiaer" />
-                    Zugewiesen an: {typeof lead.zugewiesenAn === 'object' ? `${lead.zugewiesenAn.vorname} ${lead.zugewiesenAn.nachname}` : lead.zugewiesenAn}
+                  <div className="flex items-center gap-2.5 text-sm ax-text">
+                    <User className="w-4 h-4 ax-text-tertiaer flex-shrink-0" strokeWidth={2} />
+                    <span className="ax-text-sekundaer">Zugewiesen an</span>
+                    <span className="font-medium">
+                      {typeof lead.zugewiesenAn === 'object' ? `${lead.zugewiesenAn.vorname} ${lead.zugewiesenAn.nachname}` : lead.zugewiesenAn}
+                    </span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* KI-Analyse letzter Anruf */}
+            {/* KI-Analyse letzter Anruf – mit Orange-Akzent */}
             {(lead.gptZusammenfassung || lead.gptVerdict) && (
-              <div className="px-6 py-4 border-b ax-rahmen-leicht">
-                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                  <Sparkles className="w-3 h-3 text-axano-orange" /> KI-Analyse letzter Anruf
-                </h4>
-                {lead.gptVerdict && (() => {
-                  const { text, farbe } = verdictAnzeigen(lead.gptVerdict);
-                  return (
-                    <div className="mb-2">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${farbe}`}>
-                        {text}
-                      </span>
+              <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--rahmen-leicht)' }}>
+                <div
+                  className="ax-karte-akzent rounded-xl p-4"
+                  style={{ boxShadow: 'var(--schatten-xs)' }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <div
+                      className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, #ff8049 0%, #ea6c37 100%)',
+                        boxShadow: '0 0 12px rgba(255, 128, 73, 0.35)',
+                      }}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-white" strokeWidth={2.2} />
                     </div>
-                  );
-                })()}
-                {lead.gptZusammenfassung && (
-                  <p className="text-sm ax-text leading-relaxed whitespace-pre-wrap">
-                    {lead.gptZusammenfassung}
-                  </p>
-                )}
+                    <h4 className="ax-label">KI-Analyse letzter Anruf</h4>
+                  </div>
+                  {lead.gptVerdict && (() => {
+                    const { text, farbe } = verdictAnzeigen(lead.gptVerdict);
+                    return (
+                      <div className="mb-3">
+                        <span className={`text-xs font-bold px-3 py-1.5 rounded-md ${farbe}`}>
+                          {text}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {lead.gptZusammenfassung && (
+                    <p className="text-sm ax-text leading-relaxed whitespace-pre-wrap">
+                      {lead.gptZusammenfassung}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Zusatzfelder */}
             {lead.felder && Object.keys(lead.felder).length > 0 && (
-              <div className="px-6 py-4 border-b ax-rahmen-leicht">
-                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-2">
-                  Kampagnenfelder
-                </h4>
-                <div className="space-y-1.5">
+              <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--rahmen-leicht)' }}>
+                <h4 className="ax-label mb-3">Kampagnenfelder</h4>
+                <dl className="space-y-2.5">
                   {Object.entries(lead.felder).map(([schluessel, wert]) => (
-                    <div key={schluessel} className="flex justify-between text-sm">
-                      <span className="ax-text-sekundaer">
+                    <div key={schluessel} className="flex justify-between items-baseline gap-3 text-sm">
+                      <dt className="ax-text-sekundaer flex-shrink-0">
                         {typeof wert === 'object' && wert && 'bezeichnung' in wert
                           ? (wert as { bezeichnung: string }).bezeichnung
                           : schluessel}
-                      </span>
-                      <span className="font-medium ax-titel">
+                      </dt>
+                      <dd className="font-semibold ax-titel text-right break-words">
                         {typeof wert === 'object' && wert && 'wert' in wert
                           ? String((wert as { wert: string }).wert)
                           : String(wert)}
-                      </span>
+                      </dd>
                     </div>
                   ))}
-                </div>
+                </dl>
               </div>
             )}
 
@@ -283,39 +329,35 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
               if (weitere.length === 0) return null;
 
               return (
-                <div className="px-6 py-4 border-b ax-rahmen-leicht">
-                  <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-2">
-                    Weitere Daten
-                  </h4>
-                  <div className="space-y-1.5">
+                <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--rahmen-leicht)' }}>
+                  <h4 className="ax-label mb-3">Weitere Daten</h4>
+                  <dl className="space-y-2.5">
                     {weitere.map(([schluessel, wert]) => (
-                      <div key={schluessel} className="flex justify-between text-sm gap-3">
-                        <span className="ax-text-sekundaer break-words">{schluessel}</span>
-                        <span className="font-medium ax-titel text-right break-words">
+                      <div key={schluessel} className="flex justify-between items-baseline text-sm gap-3">
+                        <dt className="ax-text-sekundaer break-words flex-shrink-0">{schluessel}</dt>
+                        <dd className="font-semibold ax-titel text-right break-words">
                           {typeof wert === 'object' ? JSON.stringify(wert) : String(wert)}
-                        </span>
+                        </dd>
                       </div>
                     ))}
-                  </div>
+                  </dl>
                 </div>
               );
             })()}
 
             {/* Status-Historie */}
             {lead.statusHistorie && lead.statusHistorie.length > 0 && (
-              <div className="px-6 py-4 border-b ax-rahmen-leicht">
-                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-2">
-                  Status-Verlauf
+              <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--rahmen-leicht)' }}>
+                <h4 className="ax-label mb-3 flex items-center gap-1.5">
+                  <Clock className="w-3 h-3" strokeWidth={2.2} /> Status-Verlauf
                 </h4>
                 <div className="space-y-2">
                   {lead.statusHistorie.slice(0, 10).map((eintrag: { id: string; alterStatus: string | null; neuerStatus: string; erstelltAm: string }) => (
-                    <div key={eintrag.id} className="flex items-center gap-2 text-xs">
-                      <Clock className="w-3 h-3 ax-text-tertiaer" />
-                      <span className="ax-text-sekundaer">
-                        {new Date(eintrag.erstelltAm).toLocaleString('de-DE')}
+                    <div key={eintrag.id} className="flex items-center gap-2 text-xs flex-wrap">
+                      <span className="ax-text-tertiaer tabular-nums flex-shrink-0">
+                        {new Date(eintrag.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}
                       </span>
-                      <span className="ax-text-tertiaer">&rarr;</span>
-                      <span className={`font-medium px-1.5 py-0.5 rounded ${statusFarbeErmitteln(eintrag.neuerStatus)}`}>
+                      <span className={`font-semibold px-2 py-0.5 rounded-md ${statusFarbeErmitteln(eintrag.neuerStatus)}`}>
                         {eintrag.neuerStatus}
                       </span>
                     </div>
@@ -324,59 +366,98 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
               </div>
             )}
 
-            {/* Aktivitäten */}
+            {/* Aktivitäten – echte Timeline mit verbindender Linie */}
             {lead.aktivitaeten && lead.aktivitaeten.length > 0 && (
-              <div className="px-6 py-4 border-b ax-rahmen-leicht">
-                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                  <Activity className="w-3 h-3" /> Aktivitäten
+              <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--rahmen-leicht)' }}>
+                <h4 className="ax-label mb-4 flex items-center gap-1.5">
+                  <Activity className="w-3 h-3" strokeWidth={2.2} /> Aktivitäten
                 </h4>
-                <div className="space-y-2">
-                  {lead.aktivitaeten.slice(0, 20).map((aktivitaet: { id: string; typ: string; beschreibung: string; erstelltAm: string }) => (
-                    <div key={aktivitaet.id} className="flex items-start gap-2 text-xs">
-                      <div className="mt-0.5 flex-shrink-0">{aktivitaetIcon(aktivitaet.typ)}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 ax-titel font-medium">
-                          <span>{AKTIVITAET_BEZEICHNUNG[aktivitaet.typ] || aktivitaet.typ}</span>
-                          <span className="ax-text-tertiaer font-normal">
-                            · {new Date(aktivitaet.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}
-                          </span>
+                <div className="relative">
+                  {/* Verbindende vertikale Linie */}
+                  <div
+                    className="absolute left-[11px] top-1 bottom-1 w-px"
+                    style={{ backgroundColor: 'var(--rahmen)' }}
+                    aria-hidden
+                  />
+                  <div className="space-y-3">
+                    {lead.aktivitaeten.slice(0, 20).map((aktivitaet: { id: string; typ: string; beschreibung: string; erstelltAm: string }) => (
+                      <div key={aktivitaet.id} className="relative flex items-start gap-3">
+                        {/* Dot mit Icon-Hintergrund */}
+                        <div
+                          className="relative z-10 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                          style={{
+                            backgroundColor: 'var(--karte)',
+                            border: '1.5px solid var(--rahmen)',
+                          }}
+                        >
+                          {aktivitaetIcon(aktivitaet.typ)}
                         </div>
-                        {aktivitaet.beschreibung && (
-                          <p className="ax-text-sekundaer leading-snug mt-0.5 break-words">{aktivitaet.beschreibung}</p>
-                        )}
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className="text-xs font-semibold ax-titel">
+                              {AKTIVITAET_BEZEICHNUNG[aktivitaet.typ] || aktivitaet.typ}
+                            </span>
+                            <span className="text-[11px] ax-text-tertiaer tabular-nums">
+                              {new Date(aktivitaet.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                          </div>
+                          {aktivitaet.beschreibung && (
+                            <p className="text-xs ax-text-sekundaer leading-snug mt-1 break-words">
+                              {aktivitaet.beschreibung}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Termine */}
             {lead.termine && lead.termine.length > 0 && (
-              <div className="px-6 py-4 border-b ax-rahmen-leicht">
-                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-3">
-                  Termine
+              <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--rahmen-leicht)' }}>
+                <h4 className="ax-label mb-3 flex items-center gap-1.5">
+                  <Calendar className="w-3 h-3" strokeWidth={2.2} /> Termine
                 </h4>
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {lead.termine.map((termin: { id: string; titel: string; beginnAm: string; quelle?: string; meetingLink?: string | null }) => (
-                    <div key={termin.id} className="ax-karte-erhoeht rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium ax-titel flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5" /> {termin.titel}
+                    <div
+                      key={termin.id}
+                      className="rounded-xl p-3.5"
+                      style={{
+                        backgroundColor: 'var(--karte-erhoeht)',
+                        border: '1px solid var(--rahmen-leicht)',
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <span className="text-sm font-semibold ax-titel leading-snug">
+                          {termin.titel}
                         </span>
                         {termin.quelle && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded flex-shrink-0"
+                            style={{
+                              backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                              color: '#15803d',
+                              border: '1px solid rgba(34, 197, 94, 0.25)',
+                            }}
+                          >
                             {termin.quelle}
                           </span>
                         )}
                       </div>
-                      <p className="text-xs ax-text-sekundaer">
+                      <p className="text-xs ax-text-sekundaer tabular-nums">
                         {new Date(termin.beginnAm).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}
                       </p>
                       {termin.meetingLink && (
-                        <a href={termin.meetingLink} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-axano-orange hover:underline mt-1 inline-flex items-center gap-1">
-                          <ExternalLink className="w-3 h-3" /> Meeting beitreten
+                        <a
+                          href={termin.meetingLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-axano-orange hover:text-orange-700 dark:hover:text-orange-400 mt-2 inline-flex items-center gap-1 font-semibold transition-colors"
+                        >
+                          <ExternalLink className="w-3 h-3" strokeWidth={2.2} /> Meeting beitreten
                         </a>
                       )}
                     </div>
@@ -386,25 +467,32 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
             )}
 
             {/* Notizen */}
-            <div className="px-6 py-4">
-              <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-3">
-                Notizen
+            <div className="px-6 py-5">
+              <h4 className="ax-label mb-3 flex items-center gap-1.5">
+                <Send className="w-3 h-3" strokeWidth={2.2} /> Notizen
               </h4>
               {lead.notizen && lead.notizen.length > 0 ? (
-                <div className="space-y-3 mb-4">
+                <div className="space-y-2.5 mb-4">
                   {lead.notizen.map((notiz: { id: string; inhalt: string; autor: { vorname: string; nachname: string } | null; erstelltAm: string }) => (
-                    <div key={notiz.id} className="ax-karte-erhoeht rounded-lg p-3">
-                      <p className="text-sm ax-titel">{notiz.inhalt}</p>
-                      <div className="flex items-center gap-2 mt-1.5 text-xs ax-text-tertiaer">
-                        <span>{notiz.autor ? `${notiz.autor.vorname} ${notiz.autor.nachname}` : 'System'}</span>
-                        <span>&middot;</span>
-                        <span>{new Date(notiz.erstelltAm).toLocaleString('de-DE')}</span>
+                    <div
+                      key={notiz.id}
+                      className="rounded-xl p-3.5"
+                      style={{
+                        backgroundColor: 'var(--karte-erhoeht)',
+                        border: '1px solid var(--rahmen-leicht)',
+                      }}
+                    >
+                      <p className="text-sm ax-titel leading-relaxed">{notiz.inhalt}</p>
+                      <div className="flex items-center gap-1.5 mt-2 text-[11px] ax-text-tertiaer">
+                        <span className="font-medium">{notiz.autor ? `${notiz.autor.vorname} ${notiz.autor.nachname}` : 'System'}</span>
+                        <span aria-hidden>·</span>
+                        <span className="tabular-nums">{new Date(notiz.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm ax-text-tertiaer mb-4">Noch keine Notizen</p>
+                <p className="text-sm ax-text-tertiaer mb-4">Noch keine Notizen.</p>
               )}
 
               {/* Neue Notiz */}
@@ -414,15 +502,20 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
                   value={neueNotiz}
                   onChange={(e) => setNeueNotiz(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && notizAbsenden()}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg ax-eingabe"
-                  placeholder="Notiz hinzufügen..."
+                  className="flex-1 px-3.5 py-2.5 text-sm rounded-lg ax-eingabe"
+                  placeholder="Notiz hinzufügen…"
                 />
                 <button
                   onClick={notizAbsenden}
                   disabled={!neueNotiz.trim() || notizHinzufuegen.isPending}
-                  className="bg-axano-primaer hover:bg-axano-sekundaer text-white p-2 rounded-lg transition-all disabled:opacity-50"
+                  aria-label="Notiz speichern"
+                  className="text-white px-3 py-2.5 rounded-lg transition-all duration-200 ease-sanft disabled:opacity-40 active:scale-[0.97] ax-fokus-ring"
+                  style={{
+                    background: 'linear-gradient(135deg, #1a2b4c 0%, #2f3d5f 100%)',
+                    boxShadow: '0 1px 3px rgba(26, 43, 76, 0.2)',
+                  }}
                 >
-                  <Send className="w-4 h-4" />
+                  <Send className="w-4 h-4" strokeWidth={2} />
                 </button>
               </div>
             </div>

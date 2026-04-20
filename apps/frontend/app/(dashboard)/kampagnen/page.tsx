@@ -6,6 +6,7 @@ import { Plus, Megaphone, Trash2, RotateCcw, XCircle } from 'lucide-react';
 import { benutzeKampagnen, benutzeKampagneWiederherstellen, benutzeKampagneEndgueltigLoeschen } from '@/hooks/benutze-kampagnen';
 import { benutzeIntegrationsStatus } from '@/hooks/benutze-integrationen';
 import { KampagnenKarte } from '@/components/kampagnen/kampagnen-karte';
+import { LeerZustand } from '@/components/ui/leer-zustand';
 import { apiClient } from '@/lib/api-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -16,26 +17,37 @@ export default function KampagnenSeite() {
 
   return (
     <div className="animate-einblenden">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-7 gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold ax-titel">Kampagnen</h1>
-          <p className="text-sm ax-text-sekundaer mt-1">Verwalten Sie Ihre Lead-Kampagnen</p>
+          <h1 className="ax-ueberschrift-1">Kampagnen</h1>
+          <p className="text-sm ax-text-sekundaer mt-1.5">Verwalten Sie Ihre Lead-Kampagnen</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setZeigePapierkorb(!zeigePapierkorb)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ease-sanft ax-fokus-ring ${
               zeigePapierkorb
                 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                : 'border ax-rahmen-leicht ax-text-sekundaer ax-hover'
+                : 'ax-text-sekundaer ax-hover'
             }`}
+            style={
+              !zeigePapierkorb
+                ? { border: '1px solid var(--rahmen)' }
+                : undefined
+            }
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
             Papierkorb
           </button>
-          <Link href="/kampagnen/neu"
-            className="bg-axano-orange hover:bg-orange-600 text-white font-semibold px-5 py-2.5 rounded-lg transition-all active:scale-95 text-sm flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Neue Kampagne
+          <Link
+            href="/kampagnen/neu"
+            className="text-white font-semibold px-5 py-2.5 rounded-lg transition-all duration-200 ease-sanft active:scale-[0.97] text-sm flex items-center gap-2 ax-fokus-ring"
+            style={{
+              background: 'linear-gradient(180deg, #ff8049 0%, #ea6c37 100%)',
+              boxShadow: '0 1px 2px rgba(234, 108, 55, 0.3), 0 0 0 1px rgba(234, 108, 55, 0.15)',
+            }}
+          >
+            <Plus className="w-4 h-4" strokeWidth={2.2} /> Neue Kampagne
           </Link>
         </div>
       </div>
@@ -43,9 +55,9 @@ export default function KampagnenSeite() {
       {zeigePapierkorb ? (
         <KampagnenPapierkorb />
       ) : isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="ax-karte rounded-xl p-5 h-48">
+            <div key={i} className="ax-karte rounded-xl p-5 h-52">
               <div className="skeleton h-5 w-2/3 rounded mb-3" />
               <div className="skeleton h-4 w-1/2 rounded mb-6" />
               <div className="skeleton h-8 w-full rounded" />
@@ -53,19 +65,33 @@ export default function KampagnenSeite() {
           ))}
         </div>
       ) : !data?.eintraege.length ? (
-        <div className="ax-karte rounded-xl p-12 text-center">
-          <Megaphone className="w-12 h-12 ax-text-tertiaer mx-auto mb-3" />
-          <h3 className="text-lg font-semibold ax-titel mb-1">Noch keine Kampagnen</h3>
-          <p className="text-sm ax-text-sekundaer mb-4">Erstellen Sie Ihre erste Kampagne, um Leads zu empfangen.</p>
-          <Link href="/kampagnen/neu"
-            className="inline-flex items-center gap-2 bg-axano-orange hover:bg-orange-600 text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm">
-            <Plus className="w-4 h-4" /> Erste Kampagne erstellen
-          </Link>
-        </div>
+        <LeerZustand
+          icon={Megaphone}
+          titel="Noch keine Kampagnen"
+          beschreibung="Erstelle deine erste Kampagne, um Leads aus Facebook, Webhooks oder anderen Quellen zu empfangen und automatisch zu qualifizieren."
+          aktion={
+            <Link
+              href="/kampagnen/neu"
+              className="inline-flex items-center gap-2 text-white font-semibold px-5 py-2.5 rounded-lg transition-all duration-200 ease-sanft active:scale-[0.97] text-sm ax-fokus-ring"
+              style={{
+                background: 'linear-gradient(180deg, #ff8049 0%, #ea6c37 100%)',
+                boxShadow: '0 1px 2px rgba(234, 108, 55, 0.3), 0 0 0 1px rgba(234, 108, 55, 0.15)',
+              }}
+            >
+              <Plus className="w-4 h-4" strokeWidth={2.2} /> Erste Kampagne erstellen
+            </Link>
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {data.eintraege.map((kampagne) => (
-            <KampagnenKarte key={kampagne.id} kampagne={kampagne} integrationsStatus={integrationsStatus} />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {data.eintraege.map((kampagne, idx) => (
+            <div
+              key={kampagne.id}
+              className="animate-einblenden-nach-oben"
+              style={{ animationDelay: `${Math.min(idx * 40, 300)}ms`, animationFillMode: 'backwards' }}
+            >
+              <KampagnenKarte kampagne={kampagne} integrationsStatus={integrationsStatus} />
+            </div>
           ))}
         </div>
       )}
@@ -106,11 +132,12 @@ function KampagnenPapierkorb() {
 
   if (!data?.length) {
     return (
-      <div className="ax-karte rounded-xl p-12 text-center">
-        <Trash2 className="w-12 h-12 ax-text-tertiaer mx-auto mb-3" />
-        <h3 className="text-lg font-semibold ax-titel mb-1">Papierkorb ist leer</h3>
-        <p className="text-sm ax-text-sekundaer">Gelöschte Kampagnen erscheinen hier.</p>
-      </div>
+      <LeerZustand
+        icon={Trash2}
+        titel="Papierkorb ist leer"
+        beschreibung="Gelöschte Kampagnen landen hier und können innerhalb von 30 Tagen wiederhergestellt werden."
+        kompakt
+      />
     );
   }
 

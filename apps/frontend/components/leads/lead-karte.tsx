@@ -1,11 +1,12 @@
 'use client';
 
 import { useDraggable } from '@dnd-kit/core';
-import { quellenFarben } from '@/lib/typen';
+import { Facebook, Globe, Mail, MessageSquare, FileText, type LucideIcon } from 'lucide-react';
 import type { Lead } from '@/lib/typen';
 
 interface LeadKarteProps {
   lead: Lead;
+  akzentFarbe?: string;
   onClick?: () => void;
 }
 
@@ -15,6 +16,14 @@ const triggerBezeichnungen: Record<string, string> = {
   email: 'E-Mail',
   whatsapp: 'WhatsApp',
   webformular: 'Formular',
+};
+
+const triggerIcons: Record<string, LucideIcon> = {
+  facebook_lead_ads: Facebook,
+  webhook: Globe,
+  email: Mail,
+  whatsapp: MessageSquare,
+  webformular: FileText,
 };
 
 function zeitVon(datum: string): string {
@@ -29,16 +38,17 @@ function zeitVon(datum: string): string {
   return new Date(datum).toLocaleDateString('de-DE');
 }
 
-export function LeadKarte({ lead, onClick }: LeadKarteProps) {
+export function LeadKarte({ lead, akzentFarbe, onClick }: LeadKarteProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: lead.id,
   });
 
-  const style = transform
-    ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
-    : undefined;
+  const style: React.CSSProperties = {
+    ...(transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : {}),
+  };
 
-  const quellenFarbe = quellenFarben[lead.quelle || ''] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400';
+  const QuelleIcon = lead.quelle ? triggerIcons[lead.quelle] : null;
+  const initiale = (lead.vorname?.[0] || lead.nachname?.[0] || '?').toUpperCase();
 
   return (
     <div
@@ -47,53 +57,102 @@ export function LeadKarte({ lead, onClick }: LeadKarteProps) {
       {...listeners}
       {...attributes}
       onClick={onClick}
-      className={`ax-karte rounded-xl p-4 cursor-pointer hover:border-axano-orange/50 hover:shadow-sm transition-all group ${
-        isDragging ? 'opacity-50 shadow-lg' : ''
+      className={`ax-karte-interaktiv rounded-xl cursor-pointer group ax-fokus-ring relative overflow-hidden ${
+        isDragging ? 'opacity-60 rotate-1' : ''
       }`}
+      tabIndex={0}
+      role="button"
+      aria-label={`Lead ${[lead.vorname, lead.nachname].filter(Boolean).join(' ') || 'Unbekannt'}`}
     >
-      {/* Kopfzeile */}
-      <div className="flex items-start justify-between mb-2">
-        <div className="min-w-0">
-          <p className="font-semibold ax-titel text-sm truncate">
-            {[lead.vorname, lead.nachname].filter(Boolean).join(' ') || 'Unbekannt'}
-          </p>
-          {lead.email && (
-            <p className="text-xs ax-text-sekundaer mt-0.5 truncate">{lead.email}</p>
+      {/* Farbiger Left-Accent-Streifen – full height */}
+      {akzentFarbe && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-0 bottom-0 w-[3px]"
+          style={{ backgroundColor: akzentFarbe }}
+        />
+      )}
+
+      <div className="p-4 pl-[18px]">
+        {/* Kopfzeile mit Avatar */}
+        <div className="flex items-start gap-3 mb-2">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 ax-titel"
+            style={{
+              backgroundColor: 'var(--karte-erhoeht)',
+              border: '1px solid var(--rahmen-leicht)',
+            }}
+            aria-hidden
+          >
+            {initiale}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold ax-titel text-sm truncate leading-tight">
+              {[lead.vorname, lead.nachname].filter(Boolean).join(' ') || 'Unbekannt'}
+            </p>
+            {lead.email && (
+              <p className="text-[11px] ax-text-sekundaer mt-0.5 truncate">{lead.email}</p>
+            )}
+          </div>
+          {lead.istDuplikat && (
+            <span
+              className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm flex-shrink-0"
+              style={{
+                backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                color: '#b45309',
+                border: '1px solid rgba(245, 158, 11, 0.28)',
+              }}
+            >
+              Dupl.
+            </span>
           )}
         </div>
-        {lead.istDuplikat && (
-          <span className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-2 py-0.5 rounded-full font-medium flex-shrink-0 ml-2">
-            Duplikat
-          </span>
+
+        {/* Telefon */}
+        {lead.telefon && (
+          <p className="text-xs ax-text-sekundaer mb-2.5 tabular-nums tracking-tight ml-12">
+            {lead.telefon}
+          </p>
         )}
-      </div>
 
-      {/* Telefon */}
-      {lead.telefon && (
-        <p className="text-xs ax-text-sekundaer mb-2 font-mono">{lead.telefon}</p>
-      )}
-
-      {/* Metadaten */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {lead.quelle && (
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${quellenFarbe}`}>
-            {triggerBezeichnungen[lead.quelle] || lead.quelle}
+        {/* Metadaten-Zeile */}
+        <div className="flex items-center justify-between gap-2 ml-12">
+          {lead.quelle && (
+            <div className="flex items-center gap-1.5 min-w-0">
+              {QuelleIcon && (
+                <QuelleIcon className="w-3 h-3 ax-text-tertiaer flex-shrink-0" strokeWidth={2.2} />
+              )}
+              <span className="text-[11px] font-medium ax-text-sekundaer truncate">
+                {triggerBezeichnungen[lead.quelle] || lead.quelle}
+              </span>
+            </div>
+          )}
+          <span className="text-[11px] ax-text-tertiaer flex-shrink-0 tabular-nums">
+            {zeitVon(lead.erstelltAm)}
           </span>
-        )}
-        <span className="text-xs ax-text-tertiaer">
-          {zeitVon(lead.erstelltAm)}
-        </span>
-      </div>
-
-      {/* Zugewiesener Mitarbeiter */}
-      {lead.zugewiesenAn && (
-        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t ax-rahmen-leicht">
-          <div className="w-5 h-5 rounded-full bg-axano-sky-blue/50 dark:bg-axano-sky-blue/20 flex items-center justify-center text-[10px] font-bold text-[var(--titel)]">
-            {lead.zugewiesenAn.name.charAt(0)}
-          </div>
-          <span className="text-xs ax-text-sekundaer">{lead.zugewiesenAn.name}</span>
         </div>
-      )}
+
+        {/* Zugewiesener Mitarbeiter */}
+        {lead.zugewiesenAn && (
+          <div
+            className="flex items-center gap-2 mt-3 pt-2.5 ml-12"
+            style={{ borderTop: '1px solid var(--rahmen-leicht)' }}
+          >
+            <div
+              className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+              style={{
+                backgroundColor: 'var(--axano-sky-blue)',
+                color: 'var(--axano-primaer)',
+              }}
+            >
+              {lead.zugewiesenAn.name.charAt(0)}
+            </div>
+            <span className="text-[11px] ax-text-sekundaer font-medium truncate">
+              {lead.zugewiesenAn.name}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -16,6 +16,7 @@
   --axano-sky-blue: #c7d7e8;
   --axano-soft-cloud: #f5f7fa;
   --axano-orange: #ff8049;
+  --axano-orange-tief: #ea6c37;
 
   /* Semantische Farben */
   --axano-erfolg: #22c55e;
@@ -33,9 +34,42 @@
   --text-tertiaer: #94a3b8;
   --rahmen: #d5e1ed;
   --rahmen-leicht: #e4ecf4;
+  --rahmen-stark: #b8c8dc;
   --eingabe-bg: #ffffff;
   --eingabe-rahmen: #c7d7e8;
   --hover-bg: #f0f4f8;
+
+  /* Orange-Akzent-Variationen */
+  --akzent-orange-sanft: rgba(255, 128, 73, 0.10);
+  --akzent-orange-mittel: rgba(255, 128, 73, 0.18);
+  --akzent-orange-rand: rgba(255, 128, 73, 0.28);
+
+  /* Getönte Schatten – Light Mode (basieren auf #1a2b4c) */
+  --schatten-xs: 0 1px 2px rgba(26, 43, 76, 0.04);
+  --schatten-sm: 0 1px 3px rgba(26, 43, 76, 0.06), 0 1px 2px rgba(26, 43, 76, 0.04);
+  --schatten-md: 0 4px 8px -2px rgba(26, 43, 76, 0.08), 0 2px 4px -2px rgba(26, 43, 76, 0.05);
+  --schatten-lg: 0 10px 20px -5px rgba(26, 43, 76, 0.10), 0 4px 8px -4px rgba(26, 43, 76, 0.06);
+  --schatten-xl: 0 20px 40px -10px rgba(26, 43, 76, 0.14), 0 8px 16px -8px rgba(26, 43, 76, 0.08);
+  --schatten-fokus: 0 0 0 3px rgba(255, 128, 73, 0.18);
+  --schatten-innen: inset 0 1px 2px rgba(26, 43, 76, 0.04);
+
+  /* Glas-Hintergrund für Overlay-Panels */
+  --glas-bg: rgba(255, 255, 255, 0.78);
+  --glas-rand: rgba(255, 255, 255, 0.55);
+
+  /* Radius-Skala */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-pille: 9999px;
+
+  /* Bewegungs-Kurven */
+  --bewegung-sanft: cubic-bezier(0.32, 0.72, 0, 1);
+  --bewegung-feder: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --bewegung-schnell: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark {
@@ -49,9 +83,28 @@
   --text-tertiaer: #4a6280;
   --rahmen: #2a3f5a;
   --rahmen-leicht: #223148;
+  --rahmen-stark: #3a5478;
   --eingabe-bg: #0f1623;
   --eingabe-rahmen: #2a3f5a;
   --hover-bg: #1f2d42;
+
+  /* Orange-Akzent Dark-Mode: etwas wärmer */
+  --akzent-orange-sanft: rgba(255, 128, 73, 0.14);
+  --akzent-orange-mittel: rgba(255, 128, 73, 0.22);
+  --akzent-orange-rand: rgba(255, 128, 73, 0.36);
+
+  /* Getönte Schatten – Dark Mode (tiefes Schwarz statt Primär-Blau) */
+  --schatten-xs: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --schatten-sm: 0 1px 3px rgba(0, 0, 0, 0.30), 0 1px 2px rgba(0, 0, 0, 0.20);
+  --schatten-md: 0 4px 8px -2px rgba(0, 0, 0, 0.38), 0 2px 4px -2px rgba(0, 0, 0, 0.24);
+  --schatten-lg: 0 10px 20px -5px rgba(0, 0, 0, 0.44), 0 4px 8px -4px rgba(0, 0, 0, 0.28);
+  --schatten-xl: 0 20px 40px -10px rgba(0, 0, 0, 0.55), 0 8px 16px -8px rgba(0, 0, 0, 0.32);
+  --schatten-fokus: 0 0 0 3px rgba(255, 128, 73, 0.32);
+  --schatten-innen: inset 0 1px 2px rgba(0, 0, 0, 0.28);
+
+  /* Glas dunkel */
+  --glas-bg: rgba(26, 36, 53, 0.72);
+  --glas-rand: rgba(255, 255, 255, 0.06);
 }
 
 /* ===================================
@@ -66,11 +119,50 @@
 
 .ax-karte {
   background-color: var(--karte);
-  border: 1px solid var(--rahmen);
+  border: 1px solid var(--rahmen-leicht);
+  box-shadow: var(--schatten-xs);
 }
 
 .ax-karte-erhoeht {
   background-color: var(--karte-erhoeht);
+}
+
+/* Interaktive Karte mit weicher Lift-Bewegung */
+.ax-karte-interaktiv {
+  background-color: var(--karte);
+  border: 1px solid var(--rahmen-leicht);
+  box-shadow: var(--schatten-xs);
+  transition:
+    transform 220ms var(--bewegung-sanft),
+    box-shadow 220ms var(--bewegung-sanft),
+    border-color 220ms var(--bewegung-sanft);
+}
+
+.ax-karte-interaktiv:hover {
+  transform: translateY(-2px);
+  border-color: var(--akzent-orange-rand);
+  box-shadow: var(--schatten-lg);
+}
+
+/* Karte mit Orange-Left-Akzent (für betonte Inhalte wie KI-Analyse) */
+.ax-karte-akzent {
+  background-color: var(--karte);
+  border: 1px solid var(--rahmen-leicht);
+  border-left: 3px solid var(--axano-orange);
+  background-image: linear-gradient(
+    to right,
+    var(--akzent-orange-sanft) 0%,
+    transparent 40%
+  );
+}
+
+/* Glas-Karte für Overlay-Panels und Toasts */
+.ax-karte-glas {
+  background-color: var(--glas-bg);
+  border: 1px solid var(--glas-rand);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: var(--schatten-xl);
 }
 
 .ax-titel {
@@ -97,15 +189,90 @@
   border-color: var(--rahmen-leicht);
 }
 
+.ax-rahmen-stark {
+  border-color: var(--rahmen-stark);
+}
+
+/* ===================================
+   TYPOGRAFIE-SKALA
+   Bewusste Hierarchie – weg von ad-hoc
+   =================================== */
+
+.ax-ueberschrift-1 {
+  font-size: 2rem;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  font-weight: 700;
+  color: var(--text-titel);
+  text-wrap: balance;
+}
+
+.ax-ueberschrift-2 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  font-weight: 700;
+  color: var(--text-titel);
+  text-wrap: balance;
+}
+
+.ax-ueberschrift-3 {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+  color: var(--text-titel);
+  text-wrap: balance;
+}
+
+.ax-label {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sekundaer);
+}
+
+/* Tabular-Ziffern für Statistiken, Zahlen, Counts */
+.ax-zahl {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'cv08' 1;
+}
+
+/* ===================================
+   SCHATTEN-UTILITIES
+   =================================== */
+
+.ax-schatten-xs { box-shadow: var(--schatten-xs); }
+.ax-schatten-sm { box-shadow: var(--schatten-sm); }
+.ax-schatten-md { box-shadow: var(--schatten-md); }
+.ax-schatten-lg { box-shadow: var(--schatten-lg); }
+.ax-schatten-xl { box-shadow: var(--schatten-xl); }
+.ax-schatten-fokus { box-shadow: var(--schatten-fokus); }
+.ax-schatten-innen { box-shadow: var(--schatten-innen); }
+
+/* ===================================
+   INPUT / FOKUS
+   =================================== */
+
 .ax-eingabe {
   background-color: var(--eingabe-bg);
   border: 1px solid var(--eingabe-rahmen);
   color: var(--text-normal);
+  transition:
+    border-color 180ms var(--bewegung-schnell),
+    box-shadow 180ms var(--bewegung-schnell),
+    background-color 180ms var(--bewegung-schnell);
+}
+
+.ax-eingabe:hover {
+  border-color: var(--rahmen-stark);
 }
 
 .ax-eingabe:focus {
   border-color: var(--axano-orange);
-  box-shadow: 0 0 0 2px rgba(255, 128, 73, 0.25);
+  box-shadow: var(--schatten-fokus);
   outline: none;
 }
 
@@ -113,8 +280,41 @@
   color: var(--text-tertiaer);
 }
 
+.ax-hover {
+  transition: background-color 180ms var(--bewegung-schnell);
+}
+
 .ax-hover:hover {
   background-color: var(--hover-bg);
+}
+
+.ax-fokus-ring:focus-visible {
+  outline: none;
+  box-shadow: var(--schatten-fokus);
+  border-radius: var(--radius-sm);
+}
+
+/* ===================================
+   PULS – für aktive Status-Ampeln
+   =================================== */
+
+.ax-puls-akzent {
+  position: relative;
+}
+
+.ax-puls-akzent::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: currentColor;
+  animation: ax-puls 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  opacity: 0.5;
+}
+
+@keyframes ax-puls {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.7); opacity: 0; }
 }
 
 /* ===================================
@@ -125,23 +325,58 @@
   * {
     border-color: var(--rahmen-leicht);
   }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
     background-color: var(--seite);
     color: var(--text-normal);
     font-family: 'Manrope', system-ui, sans-serif;
+    font-feature-settings: 'ss01' 1, 'cv11' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Subtiles Noise-Overlay – nur Light Mode, bricht die Sterilität */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.018;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.17 0 0 0 0 0.3 0 0 0 0.9 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+    background-size: 200px 200px;
+  }
+
+  .dark body::before {
+    opacity: 0;
+  }
+
+  /* Balance für echte Headings */
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+  }
+
+  /* Etwas bessere Lesbarkeit für Fließtext */
+  p {
+    text-wrap: pretty;
   }
 }
 
-/* Skeleton Loader */
+/* ===================================
+   SKELETON LOADER
+   =================================== */
+
 .skeleton {
   background: linear-gradient(90deg,
     var(--karte-erhoeht) 25%,
-    var(--rahmen) 50%,
+    var(--rahmen-leicht) 50%,
     var(--karte-erhoeht) 75%);
   background-size: 200% 100%;
   animation: schimmern 1.5s infinite;
+  border-radius: var(--radius-md);
 }
 
 @keyframes schimmern {
@@ -149,10 +384,13 @@
   100% { background-position: 200% 0; }
 }
 
-/* Scrollbar */
+/* ===================================
+   SCROLLBARS – schlank und akzentiert
+   =================================== */
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -161,9 +399,45 @@
 
 ::-webkit-scrollbar-thumb {
   background: var(--rahmen);
-  border-radius: 3px;
+  border-radius: var(--radius-pille);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 180ms var(--bewegung-schnell);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-sekundaer);
+  background: var(--rahmen-stark);
+  background-clip: padding-box;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rahmen) transparent;
+}
+
+/* ===================================
+   ANIMATION-KEYFRAMES
+   =================================== */
+
+@keyframes einblenden-nach-oben {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes schimmern-orange {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 128, 73, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 128, 73, 0); }
+}
+
+/* Reduced motion respektieren */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
