@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Calendar as CalendarIcon, User, Video, Phone, Mail, Building2, Megaphone, ExternalLink, Clock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -7,6 +8,51 @@ import { apiClient } from '@/lib/api-client';
 import { useUiStore } from '@/stores/ui-store';
 import { statusFarbeErmitteln } from '@/lib/typen';
 import { LeerZustand } from '@/components/ui/leer-zustand';
+
+type ZeitraumKey = 'anstehend' | 'diese-woche' | 'vergangen' | 'alle';
+
+interface ZeitraumKonfig {
+  label: string;
+  beschreibung: string;
+  berechnen: () => { von?: string; bis?: string; sortierung: 'asc' | 'desc' };
+}
+
+const MS_PRO_TAG = 24 * 60 * 60 * 1000;
+
+const ZEITRAEUME: Record<ZeitraumKey, ZeitraumKonfig> = {
+  anstehend: {
+    label: 'Anstehend',
+    beschreibung: 'Nächste 30 Tage',
+    berechnen: () => ({
+      von: new Date().toISOString(),
+      bis: new Date(Date.now() + 30 * MS_PRO_TAG).toISOString(),
+      sortierung: 'asc',
+    }),
+  },
+  'diese-woche': {
+    label: 'Diese Woche',
+    beschreibung: '±7 Tage',
+    berechnen: () => ({
+      von: new Date(Date.now() - 7 * MS_PRO_TAG).toISOString(),
+      bis: new Date(Date.now() + 7 * MS_PRO_TAG).toISOString(),
+      sortierung: 'asc',
+    }),
+  },
+  vergangen: {
+    label: 'Vergangen',
+    beschreibung: 'Letzte 60 Tage',
+    berechnen: () => ({
+      von: new Date(Date.now() - 60 * MS_PRO_TAG).toISOString(),
+      bis: new Date().toISOString(),
+      sortierung: 'desc',
+    }),
+  },
+  alle: {
+    label: 'Alle',
+    beschreibung: 'Ohne Zeitfilter',
+    berechnen: () => ({ sortierung: 'desc' }),
+  },
+};
 
 interface TerminKalender {
   id: string;
@@ -46,13 +92,16 @@ const QUELLEN_FARBE: Record<string, string> = {
 
 export default function KalenderSeite() {
   const kundeId = useUiStore((s) => s.ausgewaehlterKundeId);
+  const [zeitraum, setZeitraum] = useState<ZeitraumKey>('anstehend');
 
   const { data: termine, isLoading } = useQuery({
-    queryKey: ['termine', kundeId],
+    queryKey: ['termine', kundeId, zeitraum],
     queryFn: async () => {
-      const von = new Date().toISOString();
-      const bis = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const params = new URLSearchParams({ von, bis });
+      const { von, bis, sortierung } = ZEITRAEUME[zeitraum].berechnen();
+      const params = new URLSearchParams();
+      if (von) params.set('von', von);
+      if (bis) params.set('bis', bis);
+      params.set('sortierung', sortierung);
       if (kundeId) params.set('kundeId', kundeId);
       const { data } = await apiClient.get(`/termine?${params.toString()}`);
       return (data.daten?.eintraege || []) as TerminKalender[];
@@ -97,15 +146,58 @@ export default function KalenderSeite() {
     return { haupt: wochentag, zusatz: rest };
   }
 
+  const aktiverZeitraum = ZEITRAEUME[zeitraum];
+  const anzahlText = termine && termine.length > 0
+    ? `${termine.length} Termin${termine.length === 1 ? '' : 'e'}`
+    : 'Keine Termine';
+
   return (
     <div className="animate-einblenden">
-      <div className="mb-7">
-        <h1 className="ax-ueberschrift-1">Kalender</h1>
-        <p className="text-sm ax-text-sekundaer mt-1.5">
-          {termine && termine.length > 0
-            ? `${termine.length} Termin${termine.length === 1 ? '' : 'e'} in den nächsten 30 Tagen`
-            : 'Termine der nächsten 30 Tage'}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="ax-ueberschrift-1">Kalender</h1>
+          <p className="text-sm ax-text-sekundaer mt-1.5">
+            {anzahlText} · {aktiverZeitraum.beschreibung}
+          </p>
+        </div>
+      </div>
+
+      {/* Zeitraum-Chips */}
+      <div
+        className="inline-flex items-center gap-1 mb-7 p-1 rounded-xl"
+        style={{
+          backgroundColor: 'var(--karte-erhoeht)',
+          border: '1px solid var(--rahmen-leicht)',
+        }}
+        role="tablist"
+        aria-label="Zeitraum wählen"
+      >
+        {(Object.keys(ZEITRAEUME) as ZeitraumKey[]).map((key) => {
+          const aktiv = key === zeitraum;
+          return (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={aktiv}
+              onClick={() => setZeitraum(key)}
+              className={`relative px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 ease-sanft ax-fokus-ring ${
+                aktiv
+                  ? 'ax-titel'
+                  : 'ax-text-sekundaer hover:ax-text'
+              }`}
+              style={
+                aktiv
+                  ? {
+                      backgroundColor: 'var(--karte)',
+                      boxShadow: 'var(--schatten-sm)',
+                    }
+                  : undefined
+              }
+            >
+              {ZEITRAEUME[key].label}
+            </button>
+          );
+        })}
       </div>
 
       {isLoading ? (
@@ -115,8 +207,20 @@ export default function KalenderSeite() {
       ) : tage.length === 0 ? (
         <LeerZustand
           icon={CalendarIcon}
-          titel="Keine Termine in den nächsten 30 Tagen"
-          beschreibung="Termine erscheinen hier automatisch, sobald Leads über Calendly einen Termin buchen oder die KI einen vereinbart."
+          titel={
+            zeitraum === 'vergangen'
+              ? 'Keine Termine in den letzten 60 Tagen'
+              : zeitraum === 'diese-woche'
+                ? 'Keine Termine in dieser Woche'
+                : zeitraum === 'alle'
+                  ? 'Noch keine Termine vorhanden'
+                  : 'Keine anstehenden Termine in den nächsten 30 Tagen'
+          }
+          beschreibung={
+            zeitraum === 'vergangen'
+              ? 'In diesem Zeitraum wurden keine Termine gebucht. Wechsle auf einen anderen Zeitraum, um mehr zu sehen.'
+              : 'Termine erscheinen hier automatisch, sobald Leads über Calendly einen Termin buchen oder die KI einen vereinbart.'
+          }
         />
       ) : (
         <div className="space-y-8">

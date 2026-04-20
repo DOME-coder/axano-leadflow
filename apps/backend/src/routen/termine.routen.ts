@@ -15,6 +15,7 @@ termineRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
     const kundeId = typeof req.query.kundeId === 'string' ? req.query.kundeId : undefined;
     const kampagneId = typeof req.query.kampagneId === 'string' ? req.query.kampagneId : undefined;
     const quelle = typeof req.query.quelle === 'string' ? req.query.quelle : undefined;
+    const sortierung = req.query.sortierung === 'desc' ? 'desc' : 'asc';
 
     const filter: Record<string, unknown> = {};
 
@@ -59,7 +60,7 @@ termineRouter.get('/', async (req: Request, res: Response, next: NextFunction) =
           },
         },
       },
-      orderBy: { beginnAm: 'asc' },
+      orderBy: { beginnAm: sortierung },
     });
 
     res.json({ erfolg: true, daten: { eintraege: termine, gesamt: termine.length } });
