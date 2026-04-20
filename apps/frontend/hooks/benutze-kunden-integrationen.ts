@@ -104,16 +104,49 @@ export function benutzeFacebookForms(kundeId: string) {
   return useQuery({
     queryKey: ['facebook-forms', kundeId],
     queryFn: async () => {
-      try {
-        const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/facebook/forms`);
-        return data.daten as FacebookForm[];
-      } catch {
-        // Kein Facebook verbunden oder Fehler → leere Liste statt Crash
-        return [] as FacebookForm[];
-      }
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/facebook/forms`);
+      return data.daten as FacebookForm[];
     },
     enabled: !!kundeId,
     staleTime: 60000,
-    retry: false, // Nicht wiederholen wenn Facebook-Integration fehlt
+    retry: false,
+  });
+}
+
+// Facebook-Diagnose: ausfuehrlicher Check der Verbindung
+export interface FacebookDiagnoseSeite {
+  id: string;
+  name: string;
+  istVerbunden: boolean;
+  formAnzahl?: number;
+  formFehler?: string;
+}
+
+export interface FacebookDiagnoseFormular {
+  id: string;
+  name: string;
+  status: string;
+  seiteId: string;
+  seiteName: string;
+  felderAnzahl: number;
+}
+
+export interface FacebookDiagnose {
+  verbunden: boolean;
+  verbindungsFehler: string | null;
+  verbundeneSeite: { id: string; name: string } | null;
+  erteilteBerechtigungen: string[];
+  fehlendeBerechtigungen: string[];
+  alleSeiten: FacebookDiagnoseSeite[];
+  formulare: FacebookDiagnoseFormular[];
+  empfehlungen: string[];
+}
+
+export function benutzeFacebookDiagnose(kundeId: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/facebook/diagnose`);
+      return data.daten as FacebookDiagnose;
+    },
   });
 }

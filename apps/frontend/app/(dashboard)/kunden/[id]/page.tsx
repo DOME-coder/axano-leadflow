@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Plus, Megaphone, Users, TrendingUp, Settings, ExternalLink, Trash2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Megaphone, Users, TrendingUp, Settings, ExternalLink, Trash2, RefreshCw, Search } from 'lucide-react';
 import { benutzeKunde, benutzeKundeAktualisieren } from '@/hooks/benutze-kunden';
-import { benutzeKundenIntegrationen, benutzeKundenIntegrationSpeichern, benutzeKundenIntegrationLoeschen, benutzeGoogleOAuthUrl, benutzeOutlookOAuthUrl, benutzeFacebookOAuthUrl } from '@/hooks/benutze-kunden-integrationen';
+import { benutzeKundenIntegrationen, benutzeKundenIntegrationSpeichern, benutzeKundenIntegrationLoeschen, benutzeGoogleOAuthUrl, benutzeOutlookOAuthUrl, benutzeFacebookOAuthUrl, benutzeFacebookDiagnose, type FacebookDiagnose } from '@/hooks/benutze-kunden-integrationen';
+import { FacebookDiagnoseModal } from '@/components/kampagnen/facebook-diagnose-modal';
 import { useToastStore } from '@/stores/toast-store';
 
 export default function KundeDetailSeite({ params }: { params: { id: string } }) {
@@ -239,10 +240,14 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   const googleOAuth = benutzeGoogleOAuthUrl(kundeId);
   const outlookOAuth = benutzeOutlookOAuthUrl(kundeId);
   const facebookOAuth = benutzeFacebookOAuthUrl(kundeId);
+  const facebookDiagnose = benutzeFacebookDiagnose(kundeId);
 
   const [bearbeitenName, setBearbeitenName] = useState<string | null>(null);
   const [formKonfig, setFormKonfig] = useState<Record<string, string>>({});
   const [formAktiv, setFormAktiv] = useState(false);
+  const [diagnoseOffen, setDiagnoseOffen] = useState(false);
+  const [diagnoseErgebnis, setDiagnoseErgebnis] = useState<FacebookDiagnose | null>(null);
+  const [diagnoseFehler, setDiagnoseFehler] = useState<string | null>(null);
 
   // Klick ausserhalb des Formulars schliesst es
   const formRef = useRef<HTMLDivElement>(null);
@@ -286,6 +291,23 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   const facebookVerbinden = async () => {
     const ergebnis = await facebookOAuth.mutateAsync();
     window.location.href = ergebnis.url;
+  };
+
+  const facebookDiagnoseStarten = async () => {
+    setDiagnoseOffen(true);
+    setDiagnoseErgebnis(null);
+    setDiagnoseFehler(null);
+    try {
+      const ergebnis = await facebookDiagnose.mutateAsync();
+      setDiagnoseErgebnis(ergebnis);
+    } catch (fehler: unknown) {
+      const f = fehler as { response?: { data?: { fehler?: string; message?: string } } };
+      setDiagnoseFehler(
+        f?.response?.data?.fehler ||
+        f?.response?.data?.message ||
+        'Unbekannter Fehler bei der Diagnose'
+      );
+    }
   };
 
   const outlookVerbinden = async () => {
@@ -354,6 +376,17 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
                   >
                     <ExternalLink className="w-3 h-3" />
                     {facebookOAuth.isPending ? 'Verbinde...' : 'Mit Facebook verbinden'}
+                  </button>
+                )}
+                {integration.name === 'facebook' && integration.eigeneKonfiguration && (
+                  <button
+                    onClick={facebookDiagnoseStarten}
+                    disabled={facebookDiagnose.isPending}
+                    title="Prueft Seite, Berechtigungen und Formulare live bei Facebook"
+                    className="flex items-center gap-1 text-xs bg-axano-primaer hover:opacity-90 text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  >
+                    <Search className="w-3 h-3" strokeWidth={2.2} />
+                    {facebookDiagnose.isPending ? 'Prueft...' : 'Verbindung testen'}
                   </button>
                 )}
                 {integration.name === 'superchat' && !integration.eigeneKonfiguration && (
@@ -440,6 +473,19 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
           </div>
         ))}
       </div>
+
+      {diagnoseOffen && (
+        <FacebookDiagnoseModal
+          diagnose={diagnoseErgebnis}
+          laedt={facebookDiagnose.isPending}
+          fehler={diagnoseFehler}
+          onSchliessen={() => {
+            setDiagnoseOffen(false);
+            setDiagnoseErgebnis(null);
+            setDiagnoseFehler(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -106,7 +106,7 @@ function NeueKampagneInhalt() {
   const templateErstellen = benutzeTemplateErstellen();
 
   // Facebook Lead Forms
-  const { data: facebookForms } = benutzeFacebookForms(kundeId || '');
+  const { data: facebookForms, error: facebookFormsFehler, isLoading: facebookFormsLaedt } = benutzeFacebookForms(kundeId || '');
   const [ausgewaehlteForms, setAusgewaehlteForms] = useState<string[]>([]);
   const [facebookFeldMappings, setFacebookFeldMappings] = useState<FacebookFeldMapping[]>([]);
 
@@ -585,11 +585,42 @@ function NeueKampagneInhalt() {
                   <div className="text-xs ax-text-tertiaer bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
                     Bitte wähle zuerst einen Kunden aus (Schritt 1), der Facebook verbunden hat.
                   </div>
-                ) : !facebookForms ? (
-                  <div className="text-xs ax-text-tertiaer">Lade Facebook-Formulare...</div>
-                ) : facebookForms.length === 0 ? (
-                  <div className="text-xs ax-text-tertiaer bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-                    Keine Facebook-Formulare gefunden. Bitte prüfe ob der Kunde Facebook verbunden hat und ob Lead-Formulare auf der Seite existieren.
+                ) : facebookFormsLaedt ? (
+                  <div className="text-xs ax-text-tertiaer">Lade Facebook-Formulare…</div>
+                ) : facebookFormsFehler ? (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                    <p className="text-sm font-semibold text-red-700 dark:text-red-300 mb-1">
+                      Facebook-Formulare konnten nicht geladen werden
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-400 mb-2">
+                      {(() => {
+                        const f = facebookFormsFehler as { response?: { data?: { fehler?: string } } };
+                        return f?.response?.data?.fehler || (facebookFormsFehler as Error)?.message || 'Unbekannter Fehler';
+                      })()}
+                    </p>
+                    <a
+                      href={`/kunden/${kundeId}`}
+                      className="text-xs font-semibold text-axano-orange hover:underline inline-flex items-center gap-1"
+                    >
+                      Verbindung testen in Kunden-Integration →
+                    </a>
+                  </div>
+                ) : !facebookForms || facebookForms.length === 0 ? (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">
+                      Keine Lead-Formulare auf der verbundenen Facebook-Seite
+                    </p>
+                    <p className="text-xs ax-text-sekundaer mb-2 leading-relaxed">
+                      Mögliche Ursachen: Der Kunde hat ein Formular auf einer <strong>anderen</strong> Facebook-Seite erstellt,
+                      die Facebook-Verbindung braucht eine zusätzliche Berechtigung,
+                      oder die Seite hat tatsächlich noch keine Formulare.
+                    </p>
+                    <a
+                      href={`/kunden/${kundeId}`}
+                      className="text-xs font-semibold text-axano-orange hover:underline inline-flex items-center gap-1"
+                    >
+                      Facebook-Verbindung testen →
+                    </a>
                   </div>
                 ) : (
                   <div className="space-y-2">

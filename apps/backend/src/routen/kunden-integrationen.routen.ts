@@ -242,3 +242,184 @@ kundenIntegrationenRouter.get('/facebook/forms', async (req: Request, res: Respo
     next(fehler);
   }
 });
+
+// ──────────────────────────────────────────────
+// Facebook-Diagnose (prueft Verbindung, Seiten, Berechtigungen, Formulare)
+// ──────────────────────────────────────────────
+
+// GET /api/v1/kunden/:kundeId/integrationen/facebook/diagnose
+kundenIntegrationenRouter.get('/facebook/diagnose', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fbKonfig = await import('../dienste/integrationen.dienst').then(
+      (m) => m.integrationKonfigurationLesenMitFallback('facebook', req.params.kundeId)
+    );
+
+    interface DiagnoseSeite {
+      id: string;
+      name: string;
+      istVerbunden: boolean;
+      formAnzahl?: number;
+      formFehler?: string;
+    }
+
+    interface DiagnoseFormular {
+      id: string;
+      name: string;
+      status: string;
+      seiteId: string;
+      seiteName: string;
+      felderAnzahl: number;
+    }
+
+    const befund = {
+      verbunden: false,
+      verbindungsFehler: null as string | null,
+      verbundeneSeite: null as { id: string; name: string } | null,
+      erteilteBerechtigungen: [] as string[],
+      fehlendeBerechtigungen: [] as string[],
+      alleSeiten: [] as DiagnoseSeite[],
+      formulare: [] as DiagnoseFormular[],
+      empfehlungen: [] as string[],
+    };
+
+    if (!fbKonfig?.page_access_token || !fbKonfig?.page_id) {
+      befund.verbindungsFehler = 'Facebook ist fuer diesen Kunden nicht verbunden.';
+      befund.empfehlungen.push('Klicke auf "Mit Facebook verbinden" in der Kunden-Integration.');
+      res.json({ erfolg: true, daten: befund });
+      return;
+    }
+
+    befund.verbunden = true;
+    befund.verbundeneSeite = {
+      id: fbKonfig.page_id,
+      name: fbKonfig.page_name || '(Name unbekannt)',
+    };
+
+    const benoetigteBerechtigungen = [
+      'pages_show_list',
+      'pages_read_engagement',
+      'pages_manage_metadata',
+      'leads_retrieval',
+      'business_management',
+    ];
+
+    // 1. Berechtigungen pruefen (ueber User-Token falls vorhanden, sonst Page-Token)
+    const userToken = fbKonfig.seiten_zugriffstoken || fbKonfig.page_access_token;
+    try {
+      const berechtigungsAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/me/permissions?access_token=${userToken}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (berechtigungsAntwort.ok) {
+        const permsJson = await berechtigungsAntwort.json() as {
+          data?: Array<{ permission: string; status: string }>;
+        };
+        const erteilt = (permsJson.data || [])
+          .filter((p) => p.status === 'granted')
+          .map((p) => p.permission);
+        befund.erteilteBerechtigungen = erteilt;
+        befund.fehlendeBerechtigungen = benoetigteBerechtigungen.filter((b) => !erteilt.includes(b));
+      }
+    } catch (fehler) {
+      logger.warn('Facebook Berechtigungen konnten nicht abgerufen werden', { error: fehler });
+    }
+
+    if (befund.fehlendeBerechtigungen.length > 0) {
+      befund.empfehlungen.push(
+        `Fehlende Berechtigung(en): ${befund.fehlendeBerechtigungen.join(', ')}. Bitte Facebook fuer diesen Kunden neu verbinden und im Dialog alle Haeckchen setzen.`
+      );
+    }
+
+    // 2. Alle Seiten des Nutzers pruefen (um zu sehen, ob Formular auf anderer Seite liegt)
+    try {
+      const seitenAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}&fields=id,name,access_token&limit=100`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (seitenAntwort.ok) {
+        const seitenJson = await seitenAntwort.json() as {
+          data?: Array<{ id: string; name: string; access_token?: string }>;
+        };
+        const seiten = seitenJson.data || [];
+
+        // Fuer jede Seite die Formulare zaehlen
+        for (const seite of seiten) {
+          const seiteBefund: DiagnoseSeite = {
+            id: seite.id,
+            name: seite.name,
+            istVerbunden: seite.id === fbKonfig.page_id,
+          };
+
+          if (seite.access_token) {
+            try {
+              const formsAntwort = await fetch(
+                `https://graph.facebook.com/v18.0/${seite.id}/leadgen_forms?access_token=${seite.access_token}&fields=id,name,status,created_time,questions&limit=100`,
+                { signal: AbortSignal.timeout(10000) }
+              );
+              if (formsAntwort.ok) {
+                const formsJson = await formsAntwort.json() as {
+                  data?: Array<{ id: string; name: string; status: string; questions?: Array<{ key: string }> }>;
+                };
+                const forms = formsJson.data || [];
+                seiteBefund.formAnzahl = forms.length;
+
+                // Formulare zur Gesamt-Liste hinzufuegen
+                for (const form of forms) {
+                  befund.formulare.push({
+                    id: form.id,
+                    name: form.name,
+                    status: form.status,
+                    seiteId: seite.id,
+                    seiteName: seite.name,
+                    felderAnzahl: form.questions?.length || 0,
+                  });
+                }
+              } else {
+                const fehlerText = await formsAntwort.text();
+                try {
+                  const fbJson = JSON.parse(fehlerText) as { error?: { message?: string } };
+                  seiteBefund.formFehler = fbJson.error?.message || 'Unbekannter Fehler';
+                } catch {
+                  seiteBefund.formFehler = `HTTP ${formsAntwort.status}`;
+                }
+              }
+            } catch (fehler) {
+              seiteBefund.formFehler = fehler instanceof Error ? fehler.message : 'Netzwerkfehler';
+            }
+          } else {
+            seiteBefund.formFehler = 'Kein Seiten-Token';
+          }
+
+          befund.alleSeiten.push(seiteBefund);
+        }
+      }
+    } catch (fehler) {
+      logger.warn('Facebook Seitenliste konnte nicht abgerufen werden', { error: fehler });
+    }
+
+    // 3. Empfehlungen ableiten
+    const formulareAufVerbundenerSeite = befund.formulare.filter((f) => f.seiteId === fbKonfig.page_id);
+    const formulareAufAnderenSeiten = befund.formulare.filter((f) => f.seiteId !== fbKonfig.page_id);
+
+    if (formulareAufVerbundenerSeite.length === 0) {
+      if (formulareAufAnderenSeiten.length > 0) {
+        const andereSeiten = [...new Set(formulareAufAnderenSeiten.map((f) => f.seiteName))].join(', ');
+        befund.empfehlungen.push(
+          `Es gibt ${formulareAufAnderenSeiten.length} Formular(e), aber auf anderen Seiten: ${andereSeiten}. Die verbundene Seite "${befund.verbundeneSeite.name}" hat keine Formulare. Bitte Facebook neu verbinden und die richtige Seite waehlen — oder Formular auf der richtigen Seite erstellen.`
+        );
+      } else {
+        befund.empfehlungen.push(
+          `Keine Lead-Formulare auf irgendeiner Seite des Kunden gefunden. Bitte bei Meta Business Suite ein Instant Form erstellen und als "Veroeffentlicht" speichern.`
+        );
+      }
+    } else {
+      befund.empfehlungen.push(
+        `Alles in Ordnung: ${formulareAufVerbundenerSeite.length} Formular(e) auf der verbundenen Seite "${befund.verbundeneSeite.name}".`
+      );
+    }
+
+    res.json({ erfolg: true, daten: befund });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
