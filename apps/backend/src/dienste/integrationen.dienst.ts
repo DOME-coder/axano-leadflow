@@ -48,12 +48,6 @@ const INTEGRATIONEN_DEFINITIONEN = [
     sensibleFelder: ['api_schluessel'],
   },
   {
-    name: 'openai',
-    typ: 'OpenAI (GPT)',
-    felder: ['api_schluessel', 'modell'],
-    sensibleFelder: ['api_schluessel'],
-  },
-  {
     name: 'anthropic',
     typ: 'Anthropic (Claude)',
     felder: ['api_schluessel', 'modell'],

@@ -2,7 +2,7 @@ import { prisma } from '../datenbank/prisma.client';
 import { vapiAnrufStarten } from './vapi.dienst';
 import { transkriptAnalysieren, voicemailBackupCheck } from './gpt.dienst';
 import { emailMitTemplateSenden, emailSenden } from './email.dienst';
-import { superchatKontaktSuchen, superchatKontaktErstellen, superchatTemplateNachrichtSenden, hatLeadPerWhatsAppGeantwortet } from './whatsapp.dienst';
+import { superchatKontaktFinden, superchatKontaktErstellen, superchatTemplateNachrichtSenden, hatLeadPerWhatsAppGeantwortet } from './whatsapp.dienst';
 import { integrationKonfigurationLesenMitFallback } from './integrationen.dienst';
 import { socketServer } from '../websocket/socket.handler';
 import { logger } from '../hilfsfunktionen/logger';
@@ -908,11 +908,15 @@ export async function followUpDirektSenden(
       const superchatKonfig = await integrationKonfigurationLesenMitFallback('superchat', lead.kampagne?.kundeId || null);
       if (superchatKonfig?.api_schluessel) {
         const basisUrl = superchatKonfig.basis_url || 'https://api.superchat.de';
-        let kontakt = await superchatKontaktSuchen(lead.telefon, superchatKonfig.api_schluessel, basisUrl);
+        let kontakt = await superchatKontaktFinden(
+          { telefon: lead.telefon, email: lead.email },
+          superchatKonfig.api_schluessel,
+          basisUrl
+        );
 
         if (!kontakt) {
           kontakt = await superchatKontaktErstellen(
-            { telefon: lead.telefon, vorname: lead.vorname || undefined, nachname: lead.nachname || undefined },
+            { telefon: lead.telefon, vorname: lead.vorname || undefined, nachname: lead.nachname || undefined, email: lead.email || undefined },
             superchatKonfig.api_schluessel,
             basisUrl
           );

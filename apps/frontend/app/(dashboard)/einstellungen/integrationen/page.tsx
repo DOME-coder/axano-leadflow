@@ -16,7 +16,7 @@ const integrationIcons: Record<string, string> = {
   calendly: '🗓️',
   outlook: '📬',
   vapi: '📞',
-  openai: '🤖',
+  anthropic: '🧠',
 };
 
 const feldBezeichnungen: Record<string, string> = {
@@ -38,7 +38,7 @@ const feldBezeichnungen: Record<string, string> = {
   refresh_token: 'Refresh Token',
   webhook_signing_key: 'Webhook Signing Key',
   tenant_id: 'Tenant ID',
-  modell: 'GPT-Modell (z.B. gpt-4o)',
+  modell: 'Claude-Modell (z.B. claude-sonnet-4-20250514)',
 };
 
 export default function IntegrationenSeite() {

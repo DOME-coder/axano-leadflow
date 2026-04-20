@@ -26,7 +26,7 @@ function kampagneAmpel(kampagne: Kampagne, integrationen?: IntegrationStatus[]):
   const istAktiv = (name: string) => integrationen.find((i) => i.name === name)?.aktiv ?? false;
   const benoetigt: string[] = [];
 
-  if (kampagne.vapiAktiviert) { benoetigt.push('vapi'); benoetigt.push('openai'); }
+  if (kampagne.vapiAktiviert) { benoetigt.push('vapi'); benoetigt.push('anthropic'); }
   if (kampagne.emailAktiviert) benoetigt.push('smtp');
   if (kampagne.whatsappAktiviert) benoetigt.push('superchat');
 

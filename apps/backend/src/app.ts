@@ -1,3 +1,9 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+import { sentryInitialisieren, Sentry } from './hilfsfunktionen/sentry';
+sentryInitialisieren();
+
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
@@ -5,7 +11,6 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
 import { globaleFehlerbehebung } from './middleware/fehlerbehandlung';
 import { healthRouter } from './routen/health.routen';
 import { authRouter } from './routen/auth.routen';
@@ -31,8 +36,6 @@ import { followUpWorkerStarten } from './jobs/followup.job';
 import { anrufPollingWorkerStarten } from './jobs/anruf-polling.job';
 import { automatisierungSchedulerStarten } from './jobs/automatisierung-scheduler.job';
 import { logger } from './hilfsfunktionen/logger';
-
-dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
@@ -104,6 +107,9 @@ app.use('/api/v1/kunden/:kundeId/integrationen', kundenIntegrationenRouter);
 app.use('/api/v1/oauth', oauthRouter);
 app.use('/api/v1/test', testRouter);
 app.use('/api/v1/webhooks', webhooksRouter);
+
+// Sentry-Error-Handler vor globaler Fehlerbehandlung (nur wirksam wenn SENTRY_DSN gesetzt)
+Sentry.setupExpressErrorHandler(app);
 
 // Globale Fehlerbehandlung
 app.use(globaleFehlerbehebung);

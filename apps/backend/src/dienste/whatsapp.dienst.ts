@@ -100,6 +100,64 @@ export async function superchatKontaktSuchen(
 }
 
 /**
+ * Sucht einen Kontakt in Superchat per E-Mail-Adresse.
+ */
+export async function superchatKontaktPerEmailSuchen(
+  email: string,
+  apiSchluessel: string,
+  basisUrl: string
+): Promise<SuperchatKontakt | null> {
+  try {
+    const antwort = await fetch(
+      `${basisUrl}/v1/contacts?email=${encodeURIComponent(email)}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${apiSchluessel}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!antwort.ok) return null;
+
+    const daten = await antwort.json() as { data?: Array<{ id: string; phone?: string; email?: string }> };
+    const kontakt = daten.data?.[0];
+
+    if (!kontakt) return null;
+
+    return {
+      id: kontakt.id,
+      telefon: kontakt.phone || '',
+      email: kontakt.email,
+    };
+  } catch (fehler) {
+    logger.error('Superchat-Kontaktsuche per E-Mail fehlgeschlagen:', { email, error: fehler });
+    return null;
+  }
+}
+
+/**
+ * Findet einen Kontakt in Superchat: zuerst per Telefon, bei Misserfolg per E-Mail.
+ * Das deckt Fälle ab, in denen Leads in Superchat unter abweichender Rufnummer
+ * oder ohne Rufnummer gespeichert sind.
+ */
+export async function superchatKontaktFinden(
+  identifier: { telefon?: string | null; email?: string | null },
+  apiSchluessel: string,
+  basisUrl: string
+): Promise<SuperchatKontakt | null> {
+  if (identifier.telefon) {
+    const perTelefon = await superchatKontaktSuchen(identifier.telefon, apiSchluessel, basisUrl);
+    if (perTelefon) return perTelefon;
+  }
+  if (identifier.email) {
+    const perEmail = await superchatKontaktPerEmailSuchen(identifier.email, apiSchluessel, basisUrl);
+    if (perEmail) return perEmail;
+  }
+  return null;
+}
+
+/**
  * Erstellt einen Kontakt in Superchat.
  */
 export async function superchatKontaktErstellen(

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink, Trash2, PhoneCall } from 'lucide-react';
+import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink, Trash2, PhoneCall, Sparkles, MessageSquare, Zap, AlertTriangle, PhoneOff, PhoneOutgoing, StickyNote, ArrowRight, UserPlus, Edit3, Activity } from 'lucide-react';
 import { benutzeLead, benutzeNotizHinzufuegen, benutzeLeadLoeschen } from '@/hooks/benutze-leads';
 import { benutzeLeadSofortAnrufen } from '@/hooks/benutze-anrufe';
 import { statusFarbeErmitteln } from '@/lib/typen';
@@ -10,6 +10,68 @@ import { useToastStore } from '@/stores/toast-store';
 interface LeadDetailProps {
   leadId: string;
   onSchliessen: () => void;
+}
+
+const VERDICT_BEZEICHNUNG: Record<string, string> = {
+  'appointment booked': 'Termin gebucht',
+  'callback scheduled': 'Rückruf vereinbart',
+  'not interested': 'Nicht interessiert',
+  'wrong number': 'Falsche Nummer',
+  'voicemail': 'Voicemail',
+  'disconnected': 'Verbindung getrennt',
+  'hung up': 'Aufgelegt',
+};
+
+const VERDICT_FARBE: Record<string, string> = {
+  'appointment booked': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  'callback scheduled': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+  'not interested': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  'wrong number': 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
+  'voicemail': 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+  'disconnected': 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-400',
+  'hung up': 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+};
+
+function verdictAnzeigen(verdict: string): { text: string; farbe: string } {
+  const schluessel = verdict.toLowerCase().trim();
+  return {
+    text: VERDICT_BEZEICHNUNG[schluessel] || verdict,
+    farbe: VERDICT_FARBE[schluessel] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  };
+}
+
+const AKTIVITAET_BEZEICHNUNG: Record<string, string> = {
+  lead_erstellt: 'Lead angelegt',
+  status_geaendert: 'Status geändert',
+  notiz_hinzugefuegt: 'Notiz hinzugefügt',
+  email_gesendet: 'E-Mail gesendet',
+  whatsapp_gesendet: 'WhatsApp gesendet',
+  termin_gebucht: 'Termin gebucht',
+  automatisierung_ausgefuehrt: 'Automatisierung ausgeführt',
+  anruf_gestartet: 'Anruf gestartet',
+  anruf_abgeschlossen: 'Anruf abgeschlossen',
+  anruf_fehlgeschlagen: 'Anruf fehlgeschlagen',
+  fehler: 'Fehler',
+  manuell: 'Manuelle Aktion',
+};
+
+function aktivitaetIcon(typ: string) {
+  const klasse = 'w-3.5 h-3.5';
+  switch (typ) {
+    case 'lead_erstellt': return <UserPlus className={`${klasse} text-blue-600`} />;
+    case 'status_geaendert': return <ArrowRight className={`${klasse} text-purple-600`} />;
+    case 'notiz_hinzugefuegt': return <StickyNote className={`${klasse} text-gray-600`} />;
+    case 'email_gesendet': return <Mail className={`${klasse} text-orange-600`} />;
+    case 'whatsapp_gesendet': return <MessageSquare className={`${klasse} text-green-600`} />;
+    case 'termin_gebucht': return <Calendar className={`${klasse} text-emerald-600`} />;
+    case 'automatisierung_ausgefuehrt': return <Zap className={`${klasse} text-amber-600`} />;
+    case 'anruf_gestartet': return <PhoneOutgoing className={`${klasse} text-cyan-600`} />;
+    case 'anruf_abgeschlossen': return <PhoneCall className={`${klasse} text-green-600`} />;
+    case 'anruf_fehlgeschlagen': return <PhoneOff className={`${klasse} text-red-600`} />;
+    case 'fehler': return <AlertTriangle className={`${klasse} text-red-600`} />;
+    case 'manuell': return <Edit3 className={`${klasse} text-gray-600`} />;
+    default: return <Activity className={`${klasse} ax-text-tertiaer`} />;
+  }
 }
 
 export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
@@ -144,6 +206,30 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
               </div>
             </div>
 
+            {/* KI-Analyse letzter Anruf */}
+            {(lead.gptZusammenfassung || lead.gptVerdict) && (
+              <div className="px-6 py-4 border-b ax-rahmen-leicht">
+                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-axano-orange" /> KI-Analyse letzter Anruf
+                </h4>
+                {lead.gptVerdict && (() => {
+                  const { text, farbe } = verdictAnzeigen(lead.gptVerdict);
+                  return (
+                    <div className="mb-2">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${farbe}`}>
+                        {text}
+                      </span>
+                    </div>
+                  );
+                })()}
+                {lead.gptZusammenfassung && (
+                  <p className="text-sm ax-text leading-relaxed whitespace-pre-wrap">
+                    {lead.gptZusammenfassung}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Zusatzfelder */}
             {lead.felder && Object.keys(lead.felder).length > 0 && (
               <div className="px-6 py-4 border-b ax-rahmen-leicht">
@@ -232,6 +318,33 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
                       <span className={`font-medium px-1.5 py-0.5 rounded ${statusFarbeErmitteln(eintrag.neuerStatus)}`}>
                         {eintrag.neuerStatus}
                       </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Aktivitäten */}
+            {lead.aktivitaeten && lead.aktivitaeten.length > 0 && (
+              <div className="px-6 py-4 border-b ax-rahmen-leicht">
+                <h4 className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                  <Activity className="w-3 h-3" /> Aktivitäten
+                </h4>
+                <div className="space-y-2">
+                  {lead.aktivitaeten.slice(0, 20).map((aktivitaet: { id: string; typ: string; beschreibung: string; erstelltAm: string }) => (
+                    <div key={aktivitaet.id} className="flex items-start gap-2 text-xs">
+                      <div className="mt-0.5 flex-shrink-0">{aktivitaetIcon(aktivitaet.typ)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 ax-titel font-medium">
+                          <span>{AKTIVITAET_BEZEICHNUNG[aktivitaet.typ] || aktivitaet.typ}</span>
+                          <span className="ax-text-tertiaer font-normal">
+                            · {new Date(aktivitaet.erstelltAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                        </div>
+                        {aktivitaet.beschreibung && (
+                          <p className="ax-text-sekundaer leading-snug mt-0.5 break-words">{aktivitaet.beschreibung}</p>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

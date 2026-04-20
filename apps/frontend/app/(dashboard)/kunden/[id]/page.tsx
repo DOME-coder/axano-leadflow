@@ -356,6 +356,15 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
                     {facebookOAuth.isPending ? 'Verbinde...' : 'Mit Facebook verbinden'}
                   </button>
                 )}
+                {integration.name === 'superchat' && !integration.eigeneKonfiguration && (
+                  <button
+                    onClick={() => bearbeitenStarten(integration)}
+                    className="flex items-center gap-1 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-all"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Mit Superchat verbinden
+                  </button>
+                )}
                 {bearbeitenName !== integration.name && (
                   <button
                     onClick={() => bearbeitenStarten(integration)}
@@ -369,6 +378,14 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
 
             {bearbeitenName === integration.name && (
               <div ref={formRef} className="mt-3 space-y-2 pt-3 border-t ax-rahmen-leicht">
+                {integration.name === 'superchat' && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs rounded-lg p-3 mb-2 leading-relaxed">
+                    <strong>Superchat API-Schlüssel besorgen:</strong> Melde dich im Superchat-Dashboard an, gehe zu{' '}
+                    <em>Einstellungen → API</em> und erstelle einen API-Schlüssel. Die Basis-URL ist standardmäßig{' '}
+                    <code className="ax-karte-erhoeht px-1 rounded">https://api.superchat.de</code>. Das Webhook-Geheimnis findest du
+                    im Bereich <em>Webhooks</em> (optional, für Signatur-Prüfung eingehender Nachrichten).
+                  </div>
+                )}
                 {integration.felder.map((feld) => (
                   <div key={feld} className="space-y-0.5">
                     <label className="text-xs font-medium ax-text">{feld}</label>
