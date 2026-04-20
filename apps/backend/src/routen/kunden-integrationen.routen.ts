@@ -151,7 +151,7 @@ kundenIntegrationenRouter.get('/facebook/oauth-url', async (req: Request, res: R
     const params = new URLSearchParams({
       client_id: appId,
       redirect_uri: facebookRedirectUri(),
-      scope: 'business_management,pages_manage_metadata,pages_read_engagement,leads_retrieval,pages_show_list',
+      scope: 'business_management,pages_manage_metadata,pages_read_engagement,leads_retrieval,pages_show_list,pages_manage_ads',
       response_type: 'code',
       state: req.params.kundeId,
     });
@@ -302,6 +302,7 @@ kundenIntegrationenRouter.get('/facebook/diagnose', async (req: Request, res: Re
       'pages_read_engagement',
       'pages_manage_metadata',
       'leads_retrieval',
+      'pages_manage_ads',
       'business_management',
     ];
 
@@ -494,7 +495,15 @@ kundenIntegrationenRouter.get('/facebook/diagnose', async (req: Request, res: Re
     const formulareAufVerbundenerSeite = befund.formulare.filter((f) => f.seiteId === fbKonfig.page_id);
     const formulareAufAnderenSeiten = befund.formulare.filter((f) => f.seiteId !== fbKonfig.page_id);
 
-    if (formulareAufVerbundenerSeite.length === 0) {
+    // Spezifische Fehler-Erkennung: wenn ueberall "pages_manage_ads" Fehler → Permission fehlt
+    const alleSeitenFehlerPagesManageAds = befund.alleSeiten.length > 0 &&
+      befund.alleSeiten.every((s) => s.formFehler?.toLowerCase().includes('pages_manage_ads'));
+
+    if (alleSeitenFehlerPagesManageAds) {
+      befund.empfehlungen.push(
+        'Meta verlangt die Berechtigung "pages_manage_ads" um Lead-Formulare abzurufen. Bitte Facebook fuer diesen Kunden EINMAL neu verbinden — im OAuth-Dialog muss die zusaetzliche Berechtigung akzeptiert werden. Dieser Schritt ist nur einmal noetig.'
+      );
+    } else if (formulareAufVerbundenerSeite.length === 0) {
       if (formulareAufAnderenSeiten.length > 0) {
         const andereSeiten = [...new Set(formulareAufAnderenSeiten.map((f) => f.seiteName))].join(', ');
         befund.empfehlungen.push(
