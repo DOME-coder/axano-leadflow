@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Plus, Megaphone, Users, TrendingUp, Settings, ExternalLink, Trash2, RefreshCw, Search } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Megaphone, Users, TrendingUp, Settings, ExternalLink, Trash2, RefreshCw, Search, MessageSquare } from 'lucide-react';
 import { benutzeKunde, benutzeKundeAktualisieren } from '@/hooks/benutze-kunden';
-import { benutzeKundenIntegrationen, benutzeKundenIntegrationSpeichern, benutzeKundenIntegrationLoeschen, benutzeGoogleOAuthUrl, benutzeOutlookOAuthUrl, benutzeFacebookOAuthUrl, benutzeFacebookDiagnose, type FacebookDiagnose } from '@/hooks/benutze-kunden-integrationen';
+import { benutzeKundenIntegrationen, benutzeKundenIntegrationSpeichern, benutzeKundenIntegrationLoeschen, benutzeGoogleOAuthUrl, benutzeOutlookOAuthUrl, benutzeFacebookOAuthUrl, benutzeFacebookDiagnose, type FacebookDiagnose, benutzeWhatsappOAuthUrl, benutzeWhatsappDiagnose, type WhatsappDiagnose } from '@/hooks/benutze-kunden-integrationen';
 import { FacebookDiagnoseModal } from '@/components/kampagnen/facebook-diagnose-modal';
+import { WhatsappMetaDiagnoseModal } from '@/components/kampagnen/whatsapp-meta-diagnose-modal';
 import { useToastStore } from '@/stores/toast-store';
 
 export default function KundeDetailSeite({ params }: { params: { id: string } }) {
@@ -29,6 +30,8 @@ export default function KundeDetailSeite({ params }: { params: { id: string } })
     const facebook = searchParams.get('facebook_lead_ads');
     const grund = searchParams.get('grund');
 
+    const whatsapp = searchParams.get('whatsapp');
+
     if (google === 'verbunden') {
       toastAnzeigen('erfolg', 'Google Calendar erfolgreich verbunden');
     } else if (google === 'fehler') {
@@ -41,10 +44,14 @@ export default function KundeDetailSeite({ params }: { params: { id: string } })
       toastAnzeigen('erfolg', 'Facebook Lead Ads erfolgreich verbunden');
     } else if (facebook === 'fehler') {
       toastAnzeigen('fehler', `Facebook konnte nicht verbunden werden${grund ? `: ${grund}` : ''}`);
+    } else if (whatsapp === 'verbunden') {
+      toastAnzeigen('erfolg', 'WhatsApp Business erfolgreich verbunden');
+    } else if (whatsapp === 'fehler') {
+      toastAnzeigen('fehler', `WhatsApp konnte nicht verbunden werden${grund ? `: ${grund}` : ''}`);
     }
 
     // Query-Params nach dem Anzeigen aufräumen
-    if (google || outlook || facebook) {
+    if (google || outlook || facebook || whatsapp) {
       router.replace(`/kunden/${id}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,6 +248,8 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   const outlookOAuth = benutzeOutlookOAuthUrl(kundeId);
   const facebookOAuth = benutzeFacebookOAuthUrl(kundeId);
   const facebookDiagnose = benutzeFacebookDiagnose(kundeId);
+  const whatsappOAuth = benutzeWhatsappOAuthUrl(kundeId);
+  const whatsappDiagnose = benutzeWhatsappDiagnose(kundeId);
 
   const [bearbeitenName, setBearbeitenName] = useState<string | null>(null);
   const [formKonfig, setFormKonfig] = useState<Record<string, string>>({});
@@ -248,6 +257,9 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   const [diagnoseOffen, setDiagnoseOffen] = useState(false);
   const [diagnoseErgebnis, setDiagnoseErgebnis] = useState<FacebookDiagnose | null>(null);
   const [diagnoseFehler, setDiagnoseFehler] = useState<string | null>(null);
+  const [whatsappDiagnoseOffen, setWhatsappDiagnoseOffen] = useState(false);
+  const [whatsappDiagnoseErgebnis, setWhatsappDiagnoseErgebnis] = useState<WhatsappDiagnose | null>(null);
+  const [whatsappDiagnoseFehler, setWhatsappDiagnoseFehler] = useState<string | null>(null);
 
   // Klick ausserhalb des Formulars schliesst es
   const formRef = useRef<HTMLDivElement>(null);
@@ -310,6 +322,28 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
     }
   };
 
+  const whatsappVerbinden = async () => {
+    const ergebnis = await whatsappOAuth.mutateAsync();
+    window.location.href = ergebnis.url;
+  };
+
+  const whatsappDiagnoseStarten = async () => {
+    setWhatsappDiagnoseOffen(true);
+    setWhatsappDiagnoseErgebnis(null);
+    setWhatsappDiagnoseFehler(null);
+    try {
+      const ergebnis = await whatsappDiagnose.mutateAsync();
+      setWhatsappDiagnoseErgebnis(ergebnis);
+    } catch (fehler: unknown) {
+      const f = fehler as { response?: { data?: { fehler?: string; message?: string } } };
+      setWhatsappDiagnoseFehler(
+        f?.response?.data?.fehler ||
+        f?.response?.data?.message ||
+        'Unbekannter Fehler bei der Diagnose'
+      );
+    }
+  };
+
   const outlookVerbinden = async () => {
     const ergebnis = await outlookOAuth.mutateAsync();
     window.location.href = ergebnis.url;
@@ -318,7 +352,7 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   if (isLoading) return null;
 
   const wichtigeIntegrationen = integrationen?.filter((i) =>
-    ['vapi', 'smtp', 'superchat', 'facebook', 'google', 'outlook', 'calendly'].includes(i.name)
+    ['vapi', 'smtp', 'superchat', 'whatsapp', 'facebook', 'google', 'outlook', 'calendly'].includes(i.name)
   ) || [];
 
   return (
@@ -387,6 +421,27 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
                   >
                     <Search className="w-3 h-3" strokeWidth={2.2} />
                     {facebookDiagnose.isPending ? 'Prueft...' : 'Verbindung testen'}
+                  </button>
+                )}
+                {integration.name === 'whatsapp' && !integration.eigeneKonfiguration && (
+                  <button
+                    onClick={whatsappVerbinden}
+                    disabled={whatsappOAuth.isPending}
+                    className="flex items-center gap-1 text-xs bg-[#25D366] hover:bg-[#1da851] text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  >
+                    <MessageSquare className="w-3 h-3" strokeWidth={2.2} />
+                    {whatsappOAuth.isPending ? 'Verbinde...' : 'Mit WhatsApp verbinden'}
+                  </button>
+                )}
+                {integration.name === 'whatsapp' && integration.eigeneKonfiguration && (
+                  <button
+                    onClick={whatsappDiagnoseStarten}
+                    disabled={whatsappDiagnose.isPending}
+                    title="Prueft Business Account, Telefonnummern und Templates live bei Meta"
+                    className="flex items-center gap-1 text-xs bg-axano-primaer hover:opacity-90 text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  >
+                    <Search className="w-3 h-3" strokeWidth={2.2} />
+                    {whatsappDiagnose.isPending ? 'Prueft...' : 'Verbindung testen'}
                   </button>
                 )}
                 {integration.name === 'superchat' && !integration.eigeneKonfiguration && (
@@ -483,6 +538,19 @@ function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
             setDiagnoseOffen(false);
             setDiagnoseErgebnis(null);
             setDiagnoseFehler(null);
+          }}
+        />
+      )}
+
+      {whatsappDiagnoseOffen && (
+        <WhatsappMetaDiagnoseModal
+          diagnose={whatsappDiagnoseErgebnis}
+          laedt={whatsappDiagnose.isPending}
+          fehler={whatsappDiagnoseFehler}
+          onSchliessen={() => {
+            setWhatsappDiagnoseOffen(false);
+            setWhatsappDiagnoseErgebnis(null);
+            setWhatsappDiagnoseFehler(null);
           }}
         />
       )}

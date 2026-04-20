@@ -38,6 +38,14 @@ interface KampagneErstellen {
   whatsappTemplateUnerreichbar?: string | null;
   whatsappTemplateNichtInteressiert?: string | null;
   whatsappKanalId?: string | null;
+  whatsappAnbieter?: 'superchat' | 'meta';
+  whatsappMetaPhoneNumberId?: string | null;
+  whatsappTemplateVerpasstName?: string | null;
+  whatsappTemplateVerpasstSprache?: string | null;
+  whatsappTemplateUnerreichbarName?: string | null;
+  whatsappTemplateUnerreichbarSprache?: string | null;
+  whatsappTemplateNichtInteressiertName?: string | null;
+  whatsappTemplateNichtInteressiertSprache?: string | null;
   kundeId?: string | null;
   erstelltVon?: string;
   felder?: Array<{
@@ -183,6 +191,14 @@ export async function kampagneErstellen(daten: KampagneErstellen) {
       whatsappTemplateUnerreichbar: daten.whatsappTemplateUnerreichbar,
       whatsappTemplateNichtInteressiert: daten.whatsappTemplateNichtInteressiert,
       whatsappKanalId: daten.whatsappKanalId,
+      ...(daten.whatsappAnbieter !== undefined ? { whatsappAnbieter: daten.whatsappAnbieter } : {}),
+      whatsappMetaPhoneNumberId: daten.whatsappMetaPhoneNumberId,
+      whatsappTemplateVerpasstName: daten.whatsappTemplateVerpasstName,
+      whatsappTemplateVerpasstSprache: daten.whatsappTemplateVerpasstSprache,
+      whatsappTemplateUnerreichbarName: daten.whatsappTemplateUnerreichbarName,
+      whatsappTemplateUnerreichbarSprache: daten.whatsappTemplateUnerreichbarSprache,
+      whatsappTemplateNichtInteressiertName: daten.whatsappTemplateNichtInteressiertName,
+      whatsappTemplateNichtInteressiertSprache: daten.whatsappTemplateNichtInteressiertSprache,
       kundeId: daten.kundeId,
       erstelltVon: daten.erstelltVon,
       felder: daten.felder
@@ -263,7 +279,16 @@ export async function kampagneAktualisieren(
     emailTemplateNichtInteressiert?: string | null;
     whatsappTemplateVerpasst?: string | null;
     whatsappTemplateUnerreichbar?: string | null;
+    whatsappTemplateNichtInteressiert?: string | null;
     whatsappKanalId?: string | null;
+    whatsappAnbieter?: 'superchat' | 'meta';
+    whatsappMetaPhoneNumberId?: string | null;
+    whatsappTemplateVerpasstName?: string | null;
+    whatsappTemplateVerpasstSprache?: string | null;
+    whatsappTemplateUnerreichbarName?: string | null;
+    whatsappTemplateUnerreichbarSprache?: string | null;
+    whatsappTemplateNichtInteressiertName?: string | null;
+    whatsappTemplateNichtInteressiertSprache?: string | null;
     kundeId?: string | null;
   }
 ) {
@@ -298,7 +323,16 @@ export async function kampagneAktualisieren(
   if (daten.emailTemplateNichtInteressiert !== undefined) updateData.emailTemplateNichtInteressiert = daten.emailTemplateNichtInteressiert;
   if (daten.whatsappTemplateVerpasst !== undefined) updateData.whatsappTemplateVerpasst = daten.whatsappTemplateVerpasst;
   if (daten.whatsappTemplateUnerreichbar !== undefined) updateData.whatsappTemplateUnerreichbar = daten.whatsappTemplateUnerreichbar;
+  if (daten.whatsappTemplateNichtInteressiert !== undefined) updateData.whatsappTemplateNichtInteressiert = daten.whatsappTemplateNichtInteressiert;
   if (daten.whatsappKanalId !== undefined) updateData.whatsappKanalId = daten.whatsappKanalId;
+  if (daten.whatsappAnbieter !== undefined) updateData.whatsappAnbieter = daten.whatsappAnbieter;
+  if (daten.whatsappMetaPhoneNumberId !== undefined) updateData.whatsappMetaPhoneNumberId = daten.whatsappMetaPhoneNumberId;
+  if (daten.whatsappTemplateVerpasstName !== undefined) updateData.whatsappTemplateVerpasstName = daten.whatsappTemplateVerpasstName;
+  if (daten.whatsappTemplateVerpasstSprache !== undefined) updateData.whatsappTemplateVerpasstSprache = daten.whatsappTemplateVerpasstSprache;
+  if (daten.whatsappTemplateUnerreichbarName !== undefined) updateData.whatsappTemplateUnerreichbarName = daten.whatsappTemplateUnerreichbarName;
+  if (daten.whatsappTemplateUnerreichbarSprache !== undefined) updateData.whatsappTemplateUnerreichbarSprache = daten.whatsappTemplateUnerreichbarSprache;
+  if (daten.whatsappTemplateNichtInteressiertName !== undefined) updateData.whatsappTemplateNichtInteressiertName = daten.whatsappTemplateNichtInteressiertName;
+  if (daten.whatsappTemplateNichtInteressiertSprache !== undefined) updateData.whatsappTemplateNichtInteressiertSprache = daten.whatsappTemplateNichtInteressiertSprache;
   if (daten.kundeId !== undefined) {
     if (daten.kundeId) {
       updateData.kunde = { connect: { id: daten.kundeId } };

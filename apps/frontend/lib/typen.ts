@@ -70,6 +70,14 @@ export interface Kampagne {
   whatsappTemplateUnerreichbar: string | null;
   whatsappTemplateNichtInteressiert: string | null;
   whatsappKanalId: string | null;
+  whatsappAnbieter?: 'superchat' | 'meta';
+  whatsappMetaPhoneNumberId?: string | null;
+  whatsappTemplateVerpasstName?: string | null;
+  whatsappTemplateVerpasstSprache?: string | null;
+  whatsappTemplateUnerreichbarName?: string | null;
+  whatsappTemplateUnerreichbarSprache?: string | null;
+  whatsappTemplateNichtInteressiertName?: string | null;
+  whatsappTemplateNichtInteressiertSprache?: string | null;
   kundeId: string | null;
   kunde?: { id: string; name: string } | null;
   erstelltAm: string;

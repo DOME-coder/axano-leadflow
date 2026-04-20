@@ -62,6 +62,14 @@ export function benutzeKampagneErstellen() {
       whatsappTemplateVerpasst?: string | null;
       whatsappTemplateUnerreichbar?: string | null;
       whatsappTemplateNichtInteressiert?: string | null;
+      whatsappAnbieter?: 'superchat' | 'meta';
+      whatsappMetaPhoneNumberId?: string | null;
+      whatsappTemplateVerpasstName?: string | null;
+      whatsappTemplateVerpasstSprache?: string | null;
+      whatsappTemplateUnerreichbarName?: string | null;
+      whatsappTemplateUnerreichbarSprache?: string | null;
+      whatsappTemplateNichtInteressiertName?: string | null;
+      whatsappTemplateNichtInteressiertSprache?: string | null;
       benachrichtigungEmail?: string | null;
       calendlyLink?: string | null;
       branche?: string | null;

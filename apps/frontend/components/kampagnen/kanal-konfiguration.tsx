@@ -2,6 +2,7 @@
 
 import { Phone, Mail, MessageSquare, Calendar, Bell, Mic } from 'lucide-react';
 import type { EmailTemplate } from '@/lib/typen';
+import { benutzeWhatsappPhoneNumbers, benutzeWhatsappTemplates } from '@/hooks/benutze-kunden-integrationen';
 
 export interface KanalKonfigurationWerte {
   vapiAktiviert: boolean;
@@ -19,10 +20,19 @@ export interface KanalKonfigurationWerte {
   emailTemplateRueckruf: string;
   emailTemplateNichtInteressiert: string;
   whatsappAktiviert: boolean;
+  whatsappAnbieter: 'superchat' | 'meta';
   whatsappKanalId: string;
   whatsappTemplateVerpasst: string;
   whatsappTemplateUnerreichbar: string;
   whatsappTemplateNichtInteressiert: string;
+  // Meta-spezifisch
+  whatsappMetaPhoneNumberId: string;
+  whatsappTemplateVerpasstName: string;
+  whatsappTemplateVerpasstSprache: string;
+  whatsappTemplateUnerreichbarName: string;
+  whatsappTemplateUnerreichbarSprache: string;
+  whatsappTemplateNichtInteressiertName: string;
+  whatsappTemplateNichtInteressiertSprache: string;
   kiName: string;
   kiGeschlecht: string;
   kiSprachstil: string;
@@ -34,6 +44,7 @@ interface KanalKonfigurationProps {
   werte: KanalKonfigurationWerte;
   onAendern: (schluessel: keyof KanalKonfigurationWerte, wert: unknown) => void;
   templates?: EmailTemplate[];
+  kundeId?: string | null;
 }
 
 function Toggle({ aktiv, onToggle, bezeichnung }: { aktiv: boolean; onToggle: () => void; bezeichnung: string }) {
@@ -51,7 +62,11 @@ function Toggle({ aktiv, onToggle, bezeichnung }: { aktiv: boolean; onToggle: ()
   );
 }
 
-export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigurationProps) {
+export function KanalKonfiguration({ werte, onAendern, templates, kundeId }: KanalKonfigurationProps) {
+  const whatsappPhoneNumbers = benutzeWhatsappPhoneNumbers(kundeId || '');
+  const whatsappTemplates = benutzeWhatsappTemplates(kundeId || '');
+  const approvedTemplates = whatsappTemplates.data?.filter((t) => t.status === 'APPROVED') || [];
+
   return (
     <div className="space-y-4">
       {/* VAPI KI-Telefonate */}
@@ -248,7 +263,7 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
       <div className="ax-karte rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
           <MessageSquare className="w-4 h-4 ax-text" />
-          <h3 className="font-semibold ax-titel text-sm">WhatsApp (Superchat)</h3>
+          <h3 className="font-semibold ax-titel text-sm">WhatsApp</h3>
         </div>
 
         <Toggle
@@ -258,48 +273,188 @@ export function KanalKonfiguration({ werte, onAendern, templates }: KanalKonfigu
         />
 
         {werte.whatsappAktiviert && (
-          <div className="mt-4 space-y-3 pl-1">
-            <div className="space-y-1">
-              <label className="text-xs font-medium ax-text">Kanal-ID *</label>
-              <input
-                value={werte.whatsappKanalId}
-                onChange={(e) => onAendern('whatsappKanalId', e.target.value)}
-                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
-                placeholder="mc_xxx"
-              />
-            </div>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium ax-text">Template: Verpasst</label>
-                <textarea
-                  value={werte.whatsappTemplateVerpasst}
-                  onChange={(e) => onAendern('whatsappTemplateVerpasst', e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
-                  rows={3}
-                  placeholder="Hallo {{vorname}}, wir haben versucht dich zu erreichen..."
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium ax-text">Template: Nicht erreichbar</label>
-                <textarea
-                  value={werte.whatsappTemplateUnerreichbar}
-                  onChange={(e) => onAendern('whatsappTemplateUnerreichbar', e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
-                  rows={3}
-                  placeholder="Hallo {{vorname}}, leider konnten wir dich bisher nicht erreichen..."
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium ax-text">Template: Nicht interessiert</label>
-                <textarea
-                  value={werte.whatsappTemplateNichtInteressiert}
-                  onChange={(e) => onAendern('whatsappTemplateNichtInteressiert', e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
-                  rows={3}
-                  placeholder="Hallo {{vorname}}, vielen Dank für dein ehrliches Feedback..."
-                />
+          <div className="mt-4 space-y-4 pl-1">
+            {/* Anbieter-Toggle */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold ax-text-sekundaer uppercase tracking-wider">Anbieter</label>
+              <div
+                className="inline-flex items-center gap-1 p-1 rounded-xl w-full"
+                style={{
+                  backgroundColor: 'var(--karte-erhoeht)',
+                  border: '1px solid var(--rahmen-leicht)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => onAendern('whatsappAnbieter', 'meta')}
+                  className="flex-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200"
+                  style={
+                    werte.whatsappAnbieter === 'meta'
+                      ? { backgroundColor: 'var(--karte)', color: 'var(--text-titel)', boxShadow: 'var(--schatten-sm)' }
+                      : { color: 'var(--text-sekundaer)' }
+                  }
+                >
+                  Meta WhatsApp (empfohlen)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAendern('whatsappAnbieter', 'superchat')}
+                  className="flex-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200"
+                  style={
+                    werte.whatsappAnbieter !== 'meta'
+                      ? { backgroundColor: 'var(--karte)', color: 'var(--text-titel)', boxShadow: 'var(--schatten-sm)' }
+                      : { color: 'var(--text-sekundaer)' }
+                  }
+                >
+                  Superchat
+                </button>
               </div>
             </div>
+
+            {werte.whatsappAnbieter === 'meta' ? (
+              <>
+                {/* Phone Number Dropdown */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium ax-text">Telefonnummer *</label>
+                  {!kundeId ? (
+                    <p className="text-xs ax-text-tertiaer">Bitte zuerst Kunde auswählen.</p>
+                  ) : whatsappPhoneNumbers.isLoading ? (
+                    <p className="text-xs ax-text-tertiaer">Lade Telefonnummern…</p>
+                  ) : !whatsappPhoneNumbers.data || whatsappPhoneNumbers.data.length === 0 ? (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs">
+                      <p className="text-amber-800 dark:text-amber-300 font-medium mb-1">
+                        Keine Telefonnummern gefunden
+                      </p>
+                      <p className="ax-text-sekundaer">
+                        Der Kunde muss WhatsApp verbinden und eine Nummer in Meta verifizieren.{' '}
+                        <a href={`/kunden/${kundeId}`} className="text-axano-orange hover:underline">
+                          Zur Kunden-Integration →
+                        </a>
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      value={werte.whatsappMetaPhoneNumberId}
+                      onChange={(e) => onAendern('whatsappMetaPhoneNumberId', e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
+                    >
+                      <option value="">Nummer wählen…</option>
+                      {whatsappPhoneNumbers.data.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.displayPhoneNumber} · {n.verifiedName}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Template-Dropdowns */}
+                <div className="space-y-3">
+                  {approvedTemplates.length === 0 && kundeId && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs leading-relaxed">
+                      <p className="font-medium text-blue-800 dark:text-blue-300 mb-1">
+                        Keine genehmigten Templates
+                      </p>
+                      <p className="ax-text-sekundaer">
+                        Templates müssen in Meta Business Manager eingereicht und vor Nutzung von Meta
+                        genehmigt werden (ca. 24 h). Status-Prüfung über{' '}
+                        <a href={`/kunden/${kundeId}`} className="text-axano-orange hover:underline">
+                          Verbindung testen →
+                        </a>
+                      </p>
+                    </div>
+                  )}
+                  {[
+                    { name: 'verpasst', bezeichnung: 'Template: Verpasst' },
+                    { name: 'unerreichbar', bezeichnung: 'Template: Nicht erreichbar' },
+                    { name: 'nichtInteressiert', bezeichnung: 'Template: Nicht interessiert' },
+                  ].map(({ name, bezeichnung }) => {
+                    const schluesselName = `whatsappTemplate${name.charAt(0).toUpperCase()}${name.slice(1)}Name` as keyof KanalKonfigurationWerte;
+                    const schluesselSprache = `whatsappTemplate${name.charAt(0).toUpperCase()}${name.slice(1)}Sprache` as keyof KanalKonfigurationWerte;
+                    const aktuellName = werte[schluesselName] as string;
+                    const aktuellSprache = werte[schluesselSprache] as string;
+                    return (
+                      <div key={name} className="grid grid-cols-[1fr_auto] gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium ax-text">{bezeichnung}</label>
+                          <select
+                            value={aktuellName || ''}
+                            onChange={(e) => {
+                              const template = approvedTemplates.find((t) => t.name === e.target.value);
+                              onAendern(schluesselName, e.target.value);
+                              if (template) onAendern(schluesselSprache, template.language);
+                            }}
+                            disabled={approvedTemplates.length === 0}
+                            className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe disabled:opacity-50"
+                          >
+                            <option value="">Template wählen…</option>
+                            {approvedTemplates.map((t) => (
+                              <option key={t.id} value={t.name}>
+                                {t.name} · {t.language}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium ax-text">Sprache</label>
+                          <input
+                            value={aktuellSprache || 'de'}
+                            onChange={(e) => onAendern(schluesselSprache, e.target.value)}
+                            className="w-20 px-3 py-2.5 text-sm rounded-lg ax-eingabe tabular-nums"
+                            placeholder="de"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Superchat-Felder (bestehend) */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium ax-text">Kanal-ID *</label>
+                  <input
+                    value={werte.whatsappKanalId}
+                    onChange={(e) => onAendern('whatsappKanalId', e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
+                    placeholder="mc_xxx"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium ax-text">Template: Verpasst</label>
+                    <textarea
+                      value={werte.whatsappTemplateVerpasst}
+                      onChange={(e) => onAendern('whatsappTemplateVerpasst', e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                      rows={3}
+                      placeholder="Hallo {{vorname}}, wir haben versucht dich zu erreichen..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium ax-text">Template: Nicht erreichbar</label>
+                    <textarea
+                      value={werte.whatsappTemplateUnerreichbar}
+                      onChange={(e) => onAendern('whatsappTemplateUnerreichbar', e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                      rows={3}
+                      placeholder="Hallo {{vorname}}, leider konnten wir dich bisher nicht erreichen..."
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium ax-text">Template: Nicht interessiert</label>
+                    <textarea
+                      value={werte.whatsappTemplateNichtInteressiert}
+                      onChange={(e) => onAendern('whatsappTemplateNichtInteressiert', e.target.value)}
+                      className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe resize-y"
+                      rows={3}
+                      placeholder="Hallo {{vorname}}, vielen Dank für dein ehrliches Feedback..."
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

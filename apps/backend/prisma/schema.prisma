@@ -73,6 +73,15 @@ model Kampagne {
   whatsappTemplateUnerreichbar String? @map("whatsapp_template_unerreichbar")
   whatsappTemplateNichtInteressiert String? @map("whatsapp_template_nicht_interessiert")
   whatsappKanalId           String?    @map("whatsapp_kanal_id")
+  // WhatsApp-Anbieter: "superchat" (Standard, bestehend) oder "meta" (offizielle WhatsApp Business Cloud API)
+  whatsappAnbieter          String     @default("superchat") @map("whatsapp_anbieter")
+  whatsappMetaPhoneNumberId String?    @map("whatsapp_meta_phone_number_id")
+  whatsappTemplateVerpasstName      String? @map("whatsapp_template_verpasst_name")
+  whatsappTemplateVerpasstSprache   String? @default("de") @map("whatsapp_template_verpasst_sprache")
+  whatsappTemplateUnerreichbarName  String? @map("whatsapp_template_unerreichbar_name")
+  whatsappTemplateUnerreichbarSprache String? @default("de") @map("whatsapp_template_unerreichbar_sprache")
+  whatsappTemplateNichtInteressiertName   String? @map("whatsapp_template_nicht_interessiert_name")
+  whatsappTemplateNichtInteressiertSprache String? @default("de") @map("whatsapp_template_nicht_interessiert_sprache")
   geloescht            Boolean         @default(false)
   geloeschtAm          DateTime?       @map("geloescht_am")
   erstelltVon          String?         @map("erstellt_von")
@@ -261,6 +270,7 @@ enum AktivitaetTyp {
   notiz_hinzugefuegt
   email_gesendet
   whatsapp_gesendet
+  whatsapp_empfangen
   termin_gebucht
   automatisierung_ausgefuehrt
   anruf_gestartet

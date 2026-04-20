@@ -152,3 +152,92 @@ export function benutzeFacebookDiagnose(kundeId: string) {
     },
   });
 }
+
+// ─── WhatsApp Business (Meta) ─────────────────────────────
+
+export function benutzeWhatsappOAuthUrl(kundeId: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/whatsapp/oauth-url`);
+      return data.daten as { url: string };
+    },
+  });
+}
+
+export interface WhatsappPhoneNumber {
+  wabaId: string;
+  wabaName: string;
+  id: string;
+  displayPhoneNumber: string;
+  verifiedName: string;
+  qualityRating?: string;
+}
+
+export function benutzeWhatsappPhoneNumbers(kundeId: string) {
+  return useQuery({
+    queryKey: ['whatsapp-phone-numbers', kundeId],
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/whatsapp/phone-numbers`);
+      return data.daten as WhatsappPhoneNumber[];
+    },
+    enabled: !!kundeId,
+    staleTime: 60000,
+    retry: false,
+  });
+}
+
+export interface WhatsappTemplate {
+  id: string;
+  name: string;
+  status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'DISABLED';
+  category: string;
+  language: string;
+}
+
+export function benutzeWhatsappTemplates(kundeId: string, wabaId?: string) {
+  return useQuery({
+    queryKey: ['whatsapp-templates', kundeId, wabaId],
+    queryFn: async () => {
+      const params = wabaId ? `?wabaId=${wabaId}` : '';
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/whatsapp/templates${params}`);
+      return data.daten as WhatsappTemplate[];
+    },
+    enabled: !!kundeId,
+    staleTime: 60000,
+    retry: false,
+  });
+}
+
+export interface WhatsappDiagnoseWaba {
+  id: string;
+  name: string;
+  istVerbunden: boolean;
+  phoneNumbers: Array<{
+    id: string;
+    displayPhoneNumber: string;
+    verifiedName: string;
+    qualityRating?: string;
+  }>;
+  templateAnzahl?: number;
+  templateGenehmigt?: number;
+}
+
+export interface WhatsappDiagnose {
+  verbunden: boolean;
+  verbindungsFehler: string | null;
+  verbundeneWaba: { id: string; name: string } | null;
+  verbundenePhoneNumber: { id: string; display: string } | null;
+  erteilteBerechtigungen: string[];
+  fehlendeBerechtigungen: string[];
+  wabas: WhatsappDiagnoseWaba[];
+  empfehlungen: string[];
+}
+
+export function benutzeWhatsappDiagnose(kundeId: string) {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.get(`/kunden/${kundeId}/integrationen/whatsapp/diagnose`);
+      return data.daten as WhatsappDiagnose;
+    },
+  });
+}

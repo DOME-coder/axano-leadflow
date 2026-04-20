@@ -7,7 +7,7 @@ import {
   kundenIntegrationSpeichern,
   kundenIntegrationLoeschen,
 } from '../dienste/integrationen.dienst';
-import { googleRedirectUri, outlookRedirectUri, facebookRedirectUri } from './oauth.routen';
+import { googleRedirectUri, outlookRedirectUri, facebookRedirectUri, whatsappRedirectUri } from './oauth.routen';
 import { logger } from '../hilfsfunktionen/logger';
 
 export const kundenIntegrationenRouter = Router({ mergeParams: true });
@@ -518,6 +518,235 @@ kundenIntegrationenRouter.get('/facebook/diagnose', async (req: Request, res: Re
       befund.empfehlungen.push(
         `Alles in Ordnung: ${formulareAufVerbundenerSeite.length} Formular(e) auf der verbundenen Seite "${befund.verbundeneSeite.name}".`
       );
+    }
+
+    res.json({ erfolg: true, daten: befund });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// ──────────────────────────────────────────────
+// WhatsApp Business (Meta) – OAuth-URL, Phone Numbers, Templates, Diagnose
+// ──────────────────────────────────────────────
+
+// GET /api/v1/kunden/:kundeId/integrationen/whatsapp/oauth-url
+kundenIntegrationenRouter.get('/whatsapp/oauth-url', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const appId = process.env.FACEBOOK_APP_ID;
+    if (!appId) {
+      res.status(500).json({ erfolg: false, fehler: 'FACEBOOK_APP_ID nicht konfiguriert.' });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: whatsappRedirectUri(),
+      scope: 'whatsapp_business_management,whatsapp_business_messaging,business_management',
+      response_type: 'code',
+      state: req.params.kundeId,
+    });
+
+    const url = `https://www.facebook.com/v18.0/dialog/oauth?${params}`;
+    res.json({ erfolg: true, daten: { url } });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// GET /api/v1/kunden/:kundeId/integrationen/whatsapp/phone-numbers
+kundenIntegrationenRouter.get('/whatsapp/phone-numbers', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { integrationKonfigurationLesenMitFallback } = await import('../dienste/integrationen.dienst');
+    const konfig = await integrationKonfigurationLesenMitFallback('whatsapp', req.params.kundeId);
+
+    if (!konfig?.zugriffstoken) {
+      res.status(400).json({ erfolg: false, fehler: 'WhatsApp ist fuer diesen Kunden nicht verbunden.' });
+      return;
+    }
+
+    const { metaWabaListeAbrufen, metaPhoneNumbersAbrufen } = await import('../dienste/whatsapp-meta.dienst');
+    const wabas = await metaWabaListeAbrufen(konfig.zugriffstoken);
+
+    interface PhoneNumberAusgabe {
+      wabaId: string;
+      wabaName: string;
+      id: string;
+      displayPhoneNumber: string;
+      verifiedName: string;
+      qualityRating?: string;
+    }
+    const alle: PhoneNumberAusgabe[] = [];
+
+    for (const waba of wabas) {
+      const nummern = await metaPhoneNumbersAbrufen(waba.id, konfig.zugriffstoken);
+      for (const n of nummern) {
+        alle.push({
+          wabaId: waba.id,
+          wabaName: waba.name,
+          id: n.id,
+          displayPhoneNumber: n.display_phone_number,
+          verifiedName: n.verified_name,
+          qualityRating: n.quality_rating,
+        });
+      }
+    }
+
+    res.json({ erfolg: true, daten: alle });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// GET /api/v1/kunden/:kundeId/integrationen/whatsapp/templates?wabaId=xxx
+kundenIntegrationenRouter.get('/whatsapp/templates', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { integrationKonfigurationLesenMitFallback } = await import('../dienste/integrationen.dienst');
+    const konfig = await integrationKonfigurationLesenMitFallback('whatsapp', req.params.kundeId);
+
+    if (!konfig?.zugriffstoken) {
+      res.status(400).json({ erfolg: false, fehler: 'WhatsApp ist fuer diesen Kunden nicht verbunden.' });
+      return;
+    }
+
+    const wabaId = typeof req.query.wabaId === 'string' ? req.query.wabaId : konfig.waba_id;
+    if (!wabaId) {
+      res.status(400).json({ erfolg: false, fehler: 'Keine WABA-ID verfuegbar. Bitte zuerst verbinden.' });
+      return;
+    }
+
+    const { metaTemplatesAbrufen } = await import('../dienste/whatsapp-meta.dienst');
+    const templates = await metaTemplatesAbrufen(wabaId, konfig.zugriffstoken);
+
+    res.json({ erfolg: true, daten: templates });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// GET /api/v1/kunden/:kundeId/integrationen/whatsapp/diagnose
+kundenIntegrationenRouter.get('/whatsapp/diagnose', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { integrationKonfigurationLesenMitFallback } = await import('../dienste/integrationen.dienst');
+    const konfig = await integrationKonfigurationLesenMitFallback('whatsapp', req.params.kundeId);
+
+    interface DiagnoseWaba {
+      id: string;
+      name: string;
+      istVerbunden: boolean;
+      phoneNumbers: Array<{
+        id: string;
+        displayPhoneNumber: string;
+        verifiedName: string;
+        qualityRating?: string;
+      }>;
+      templateAnzahl?: number;
+      templateGenehmigt?: number;
+    }
+
+    const befund = {
+      verbunden: false,
+      verbindungsFehler: null as string | null,
+      verbundeneWaba: null as { id: string; name: string } | null,
+      verbundenePhoneNumber: null as { id: string; display: string } | null,
+      erteilteBerechtigungen: [] as string[],
+      fehlendeBerechtigungen: [] as string[],
+      wabas: [] as DiagnoseWaba[],
+      empfehlungen: [] as string[],
+    };
+
+    if (!konfig?.zugriffstoken) {
+      befund.verbindungsFehler = 'WhatsApp ist fuer diesen Kunden nicht verbunden.';
+      befund.empfehlungen.push('Klicke auf "Mit WhatsApp verbinden" in der Kunden-Integration.');
+      res.json({ erfolg: true, daten: befund });
+      return;
+    }
+
+    befund.verbunden = true;
+    if (konfig.waba_id) {
+      befund.verbundeneWaba = { id: konfig.waba_id, name: konfig.waba_name || '(unbekannt)' };
+    }
+    if (konfig.phone_number_id) {
+      befund.verbundenePhoneNumber = {
+        id: konfig.phone_number_id,
+        display: konfig.phone_number_display || '(unbekannt)',
+      };
+    }
+
+    const benoetigt = [
+      'whatsapp_business_management',
+      'whatsapp_business_messaging',
+      'business_management',
+    ];
+
+    // Berechtigungen pruefen
+    try {
+      const antwort = await fetch(
+        `https://graph.facebook.com/v18.0/me/permissions?access_token=${konfig.zugriffstoken}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (antwort.ok) {
+        const json = await antwort.json() as { data?: Array<{ permission: string; status: string }> };
+        const erteilt = (json.data || []).filter((p) => p.status === 'granted').map((p) => p.permission);
+        befund.erteilteBerechtigungen = erteilt;
+        befund.fehlendeBerechtigungen = benoetigt.filter((b) => !erteilt.includes(b));
+      }
+    } catch { /* diagnostisch */ }
+
+    if (befund.fehlendeBerechtigungen.length > 0) {
+      befund.empfehlungen.push(
+        `Fehlende Berechtigung(en): ${befund.fehlendeBerechtigungen.join(', ')}. Bitte WhatsApp neu verbinden und im OAuth-Dialog alle Haeckchen setzen.`
+      );
+    }
+
+    // WABAs, Phone Numbers, Templates
+    const { metaWabaListeAbrufen, metaPhoneNumbersAbrufen, metaTemplatesAbrufen } = await import('../dienste/whatsapp-meta.dienst');
+    const wabas = await metaWabaListeAbrufen(konfig.zugriffstoken);
+
+    for (const waba of wabas) {
+      const phoneNumbers = await metaPhoneNumbersAbrufen(waba.id, konfig.zugriffstoken);
+      const templates = await metaTemplatesAbrufen(waba.id, konfig.zugriffstoken);
+      const approved = templates.filter((t) => t.status === 'APPROVED').length;
+
+      befund.wabas.push({
+        id: waba.id,
+        name: waba.name,
+        istVerbunden: waba.id === konfig.waba_id,
+        phoneNumbers: phoneNumbers.map((n) => ({
+          id: n.id,
+          displayPhoneNumber: n.display_phone_number,
+          verifiedName: n.verified_name,
+          qualityRating: n.quality_rating,
+        })),
+        templateAnzahl: templates.length,
+        templateGenehmigt: approved,
+      });
+    }
+
+    // Empfehlungen ableiten
+    if (wabas.length === 0) {
+      befund.empfehlungen.push(
+        'Keine WhatsApp Business Accounts gefunden. Der Kunde hat moeglicherweise noch kein WABA eingerichtet. Bitte im Meta Business Manager ein WhatsApp Business Account anlegen.'
+      );
+    } else {
+      const verbunden = befund.wabas.find((w) => w.istVerbunden);
+      if (!verbunden) {
+        befund.empfehlungen.push(
+          `WABA wurde nicht zugeordnet. Bitte in der Kampagnen-Konfiguration eine Phone Number auswaehlen.`
+        );
+      } else if (verbunden.phoneNumbers.length === 0) {
+        befund.empfehlungen.push(
+          `Die verbundene WABA "${verbunden.name}" hat keine Telefonnummer. Bitte bei Meta eine Nummer verifizieren.`
+        );
+      } else if ((verbunden.templateGenehmigt || 0) === 0) {
+        befund.empfehlungen.push(
+          `Die WABA "${verbunden.name}" hat noch keine genehmigten Templates. Bitte im Meta Business Manager Message-Templates einreichen und warten bis sie den Status APPROVED haben (typisch 24h).`
+        );
+      } else {
+        befund.empfehlungen.push(
+          `Alles in Ordnung: ${verbunden.templateGenehmigt} genehmigte Template(s) verfuegbar.`
+        );
+      }
     }
 
     res.json({ erfolg: true, daten: befund });

@@ -109,9 +109,91 @@ export function workerStarten() {
           verschieben = naechsterZeitfensterbeginn(zeitfenster);
           break;
         }
-        // Platzhalter – Superchat-Integration kommt in Phase 4
-        logger.info(`WhatsApp-Nachricht würde gesendet an ${lead.telefon} (Platzhalter)`);
-        await aktivitaetProtokollieren(leadId, 'whatsapp_gesendet', 'WhatsApp-Nachricht gesendet (Platzhalter)');
+        if (!lead.telefon) {
+          logger.warn(`Lead ${leadId} hat keine Telefonnummer – WhatsApp-Schritt uebersprungen`);
+          break;
+        }
+
+        // Kampagne mit WhatsApp-Konfig laden
+        const kampagneFuerWa = await prisma.kampagne.findUnique({
+          where: { id: lead.kampagneId },
+          select: {
+            kundeId: true,
+            whatsappAnbieter: true,
+            whatsappKanalId: true,
+            whatsappMetaPhoneNumberId: true,
+          },
+        });
+        if (!kampagneFuerWa) break;
+
+        const anbieter = kampagneFuerWa.whatsappAnbieter || 'superchat';
+        const { integrationKonfigurationLesenMitFallback } = await import('../dienste/integrationen.dienst');
+
+        if (anbieter === 'meta') {
+          const templateName = konfig.templateName as string | undefined;
+          const templateSprache = (konfig.templateSprache as string | undefined) || 'de';
+          if (!templateName || !kampagneFuerWa.whatsappMetaPhoneNumberId) {
+            logger.warn(`Meta-WhatsApp-Schritt unvollstaendig (templateName oder phoneNumberId fehlt)`);
+            break;
+          }
+          const waKonfig = await integrationKonfigurationLesenMitFallback('whatsapp', kampagneFuerWa.kundeId);
+          if (!waKonfig?.zugriffstoken) {
+            logger.warn(`Meta-WhatsApp nicht verbunden fuer Kunde ${kampagneFuerWa.kundeId}`);
+            break;
+          }
+          const { metaTemplateNachrichtSenden } = await import('../dienste/whatsapp-meta.dienst');
+          const ergebnis = await metaTemplateNachrichtSenden(
+            kampagneFuerWa.whatsappMetaPhoneNumberId,
+            lead.telefon,
+            templateName,
+            templateSprache,
+            [{ name: 'vorname', wert: lead.vorname || '' }],
+            waKonfig.zugriffstoken,
+          );
+          if (ergebnis.erfolg) {
+            await aktivitaetProtokollieren(leadId, 'whatsapp_gesendet', `WhatsApp (Meta) gesendet: ${templateName}`);
+          } else {
+            logger.error('Automatisierung: Meta-WhatsApp-Versand fehlgeschlagen', { leadId, fehler: ergebnis.fehler });
+          }
+        } else {
+          // Superchat
+          const templateId = konfig.whatsappTemplateId as string | undefined;
+          if (!templateId || !kampagneFuerWa.whatsappKanalId) {
+            logger.warn(`Superchat-WhatsApp-Schritt unvollstaendig (templateId oder kanalId fehlt)`);
+            break;
+          }
+          const scKonfig = await integrationKonfigurationLesenMitFallback('superchat', kampagneFuerWa.kundeId);
+          if (!scKonfig?.api_schluessel) {
+            logger.warn(`Superchat nicht verbunden fuer Kunde ${kampagneFuerWa.kundeId}`);
+            break;
+          }
+          const basisUrl = scKonfig.basis_url || 'https://api.superchat.de';
+          const { superchatKontaktFinden, superchatKontaktErstellen, superchatTemplateNachrichtSenden } =
+            await import('../dienste/whatsapp.dienst');
+          let kontakt = await superchatKontaktFinden(
+            { telefon: lead.telefon, email: lead.email },
+            scKonfig.api_schluessel,
+            basisUrl,
+          );
+          if (!kontakt) {
+            kontakt = await superchatKontaktErstellen(
+              { telefon: lead.telefon, vorname: lead.vorname || undefined, nachname: lead.nachname || undefined, email: lead.email || undefined },
+              scKonfig.api_schluessel,
+              basisUrl,
+            );
+          }
+          if (kontakt) {
+            await superchatTemplateNachrichtSenden(
+              kontakt.id,
+              kampagneFuerWa.whatsappKanalId,
+              templateId,
+              [{ name: 'vorname', wert: lead.vorname || '' }],
+              scKonfig.api_schluessel,
+              basisUrl,
+            );
+            await aktivitaetProtokollieren(leadId, 'whatsapp_gesendet', `WhatsApp (Superchat) gesendet`);
+          }
+        }
         break;
       }
 

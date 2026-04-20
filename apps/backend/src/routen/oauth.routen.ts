@@ -42,6 +42,12 @@ export function facebookRedirectUri(): string {
   return `${apiBaseUrl}/api/v1/oauth/facebook/callback`;
 }
 
+// Hilfsfunktion: Statische Redirect-URI für WhatsApp (Meta)
+export function whatsappRedirectUri(): string {
+  const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:4000';
+  return `${apiBaseUrl}/api/v1/oauth/whatsapp/callback`;
+}
+
 // ──────────────────────────────────────────────
 // Google Callback
 // ──────────────────────────────────────────────
@@ -454,6 +460,119 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
     res.redirect(`${frontendUrl}/kunden/${kundeId}?facebook_lead_ads=verbunden`);
   } catch (fehler) {
     logger.error('Facebook OAuth Callback fehlgeschlagen:', { error: fehler });
+    next(fehler);
+  }
+});
+
+// ──────────────────────────────────────────────
+// WhatsApp Business (Meta) Callback
+// ──────────────────────────────────────────────
+oauthRouter.get('/whatsapp/callback', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { code, state, error } = req.query;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+
+    if (error) {
+      logger.warn(`WhatsApp OAuth abgelehnt: ${String(error)}`);
+      res.redirect(`${frontendUrl}/kunden?whatsapp=fehler&grund=${encodeURIComponent(String(error))}`);
+      return;
+    }
+
+    const kundeId = kundeIdAusState(state);
+    if (!kundeId) {
+      res.status(400).send('Ungueltiger oder fehlender state-Parameter.');
+      return;
+    }
+
+    if (!code || typeof code !== 'string') {
+      res.status(400).send('Authorization Code fehlt.');
+      return;
+    }
+
+    const appId = process.env.FACEBOOK_APP_ID;
+    const appGeheimnis = process.env.FACEBOOK_APP_GEHEIMNIS;
+    if (!appId || !appGeheimnis) {
+      res.status(500).send('WhatsApp OAuth nicht konfiguriert (FACEBOOK_APP_ID / FACEBOOK_APP_GEHEIMNIS fehlen).');
+      return;
+    }
+
+    // Schritt 1: Code gegen User-Access-Token tauschen
+    const tokenAntwort = await fetch(
+      `https://graph.facebook.com/v18.0/oauth/access_token?${new URLSearchParams({
+        client_id: appId,
+        client_secret: appGeheimnis,
+        redirect_uri: whatsappRedirectUri(),
+        code,
+      })}`,
+      { signal: AbortSignal.timeout(15000) }
+    );
+
+    if (!tokenAntwort.ok) {
+      const fehlerText = await tokenAntwort.text();
+      logger.error('WhatsApp Token-Tausch fehlgeschlagen:', { fehlerText });
+      res.redirect(`${frontendUrl}/kunden/${kundeId}?whatsapp=fehler&grund=${encodeURIComponent('Token-Tausch fehlgeschlagen')}`);
+      return;
+    }
+
+    const tokenDaten = (await tokenAntwort.json()) as { access_token: string };
+    const userToken = tokenDaten.access_token;
+
+    // Schritt 2: Langlebigen Token holen (60 Tage)
+    let langLebigerToken = userToken;
+    try {
+      const llAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/oauth/access_token?${new URLSearchParams({
+          grant_type: 'fb_exchange_token',
+          client_id: appId,
+          client_secret: appGeheimnis,
+          fb_exchange_token: userToken,
+        })}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (llAntwort.ok) {
+        const llDaten = (await llAntwort.json()) as { access_token: string };
+        langLebigerToken = llDaten.access_token;
+      }
+    } catch {
+      logger.warn('WhatsApp: Langlebiger Token-Tausch fehlgeschlagen, nutze Kurzzeit-Token');
+    }
+
+    // Schritt 3: WABAs und erste Phone Number suchen (fuer Vorbelegung)
+    const { metaWabaListeAbrufen, metaPhoneNumbersAbrufen } = await import('../dienste/whatsapp-meta.dienst');
+    const wabas = await metaWabaListeAbrufen(langLebigerToken);
+
+    let ersteWaba: { id: string; name: string } | null = null;
+    let erstePhoneNumber: { id: string; display_phone_number: string; verified_name: string } | null = null;
+
+    if (wabas.length > 0) {
+      ersteWaba = wabas[0];
+      const phoneNumbers = await metaPhoneNumbersAbrufen(ersteWaba.id, langLebigerToken);
+      if (phoneNumbers.length > 0) {
+        erstePhoneNumber = phoneNumbers[0];
+      }
+    }
+
+    // Schritt 4: Integration speichern (auch wenn noch keine WABA – der User kann spaeter diagnostizieren)
+    await kundenIntegrationSpeichern(
+      kundeId,
+      'whatsapp',
+      {
+        app_id: appId,
+        app_geheimnis: appGeheimnis,
+        verify_token: process.env.FACEBOOK_VERIFY_TOKEN || '',
+        waba_id: ersteWaba?.id || '',
+        waba_name: ersteWaba?.name || '',
+        phone_number_id: erstePhoneNumber?.id || '',
+        phone_number_display: erstePhoneNumber?.display_phone_number || '',
+        zugriffstoken: langLebigerToken,
+      },
+      true,
+    );
+
+    logger.info(`WhatsApp Business OAuth erfolgreich fuer Kunde ${kundeId} (WABA: ${ersteWaba?.name || 'keine'})`);
+    res.redirect(`${frontendUrl}/kunden/${kundeId}?whatsapp=verbunden`);
+  } catch (fehler) {
+    logger.error('WhatsApp OAuth Callback fehlgeschlagen:', { error: fehler });
     next(fehler);
   }
 });

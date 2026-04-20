@@ -24,6 +24,21 @@ const INTEGRATIONEN_DEFINITIONEN = [
     sensibleFelder: ['api_schluessel', 'webhook_geheimnis'],
   },
   {
+    name: 'whatsapp',
+    typ: 'WhatsApp Business (Meta)',
+    felder: [
+      'app_id',
+      'app_geheimnis',
+      'verify_token',
+      'waba_id',
+      'waba_name',
+      'phone_number_id',
+      'phone_number_display',
+      'zugriffstoken',
+    ],
+    sensibleFelder: ['app_geheimnis', 'verify_token', 'zugriffstoken'],
+  },
+  {
     name: 'google',
     typ: 'Google Calendar',
     felder: ['client_id', 'client_geheimnis', 'refresh_token'],

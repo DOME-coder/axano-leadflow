@@ -55,10 +55,18 @@ const standardKanalWerte: KanalKonfigurationWerte = {
   emailTemplateRueckruf: '',
   emailTemplateNichtInteressiert: '',
   whatsappAktiviert: false,
+  whatsappAnbieter: 'meta' as const,
   whatsappKanalId: '',
   whatsappTemplateVerpasst: '',
   whatsappTemplateUnerreichbar: '',
   whatsappTemplateNichtInteressiert: '',
+  whatsappMetaPhoneNumberId: '',
+  whatsappTemplateVerpasstName: '',
+  whatsappTemplateVerpasstSprache: 'de',
+  whatsappTemplateUnerreichbarName: '',
+  whatsappTemplateUnerreichbarSprache: 'de',
+  whatsappTemplateNichtInteressiertName: '',
+  whatsappTemplateNichtInteressiertSprache: 'de',
   kiName: '',
   kiGeschlecht: '',
   kiSprachstil: 'freundlich',
@@ -321,10 +329,18 @@ function NeueKampagneInhalt() {
         emailTemplateRueckruf: kanalWerte.emailTemplateRueckruf || null,
         emailTemplateNichtInteressiert: kanalWerte.emailTemplateNichtInteressiert || null,
         whatsappAktiviert: kanalWerte.whatsappAktiviert,
+        whatsappAnbieter: kanalWerte.whatsappAnbieter,
         whatsappKanalId: kanalWerte.whatsappKanalId || null,
         whatsappTemplateVerpasst: kanalWerte.whatsappTemplateVerpasst || null,
         whatsappTemplateUnerreichbar: kanalWerte.whatsappTemplateUnerreichbar || null,
         whatsappTemplateNichtInteressiert: kanalWerte.whatsappTemplateNichtInteressiert || null,
+        whatsappMetaPhoneNumberId: kanalWerte.whatsappMetaPhoneNumberId || null,
+        whatsappTemplateVerpasstName: kanalWerte.whatsappTemplateVerpasstName || null,
+        whatsappTemplateVerpasstSprache: kanalWerte.whatsappTemplateVerpasstSprache || null,
+        whatsappTemplateUnerreichbarName: kanalWerte.whatsappTemplateUnerreichbarName || null,
+        whatsappTemplateUnerreichbarSprache: kanalWerte.whatsappTemplateUnerreichbarSprache || null,
+        whatsappTemplateNichtInteressiertName: kanalWerte.whatsappTemplateNichtInteressiertName || null,
+        whatsappTemplateNichtInteressiertSprache: kanalWerte.whatsappTemplateNichtInteressiertSprache || null,
         benachrichtigungEmail: kanalWerte.benachrichtigungEmail || null,
         calendlyLink: kanalWerte.calendlyLink || null,
       });
@@ -770,6 +786,7 @@ function NeueKampagneInhalt() {
             werte={kanalWerte}
             onAendern={kanalWertAendern}
             templates={templates}
+            kundeId={kundeId}
           />
         )}
 

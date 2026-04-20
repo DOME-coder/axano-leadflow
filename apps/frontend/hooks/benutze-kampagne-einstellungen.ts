@@ -22,6 +22,15 @@ interface KampagneEinstellungen {
   whatsappKanalId?: string | null;
   whatsappTemplateVerpasst?: string | null;
   whatsappTemplateUnerreichbar?: string | null;
+  whatsappTemplateNichtInteressiert?: string | null;
+  whatsappAnbieter?: 'superchat' | 'meta';
+  whatsappMetaPhoneNumberId?: string | null;
+  whatsappTemplateVerpasstName?: string | null;
+  whatsappTemplateVerpasstSprache?: string | null;
+  whatsappTemplateUnerreichbarName?: string | null;
+  whatsappTemplateUnerreichbarSprache?: string | null;
+  whatsappTemplateNichtInteressiertName?: string | null;
+  whatsappTemplateNichtInteressiertSprache?: string | null;
   kiName?: string | null;
   kiGeschlecht?: string | null;
   kiSprachstil?: string | null;

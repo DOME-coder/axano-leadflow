@@ -658,3 +658,144 @@ function extrahiere(obj: Record<string, unknown>, schluessel: string[]): string 
   }
   return undefined;
 }
+
+// ──────────────────────────────────────────────
+// Meta WhatsApp Business Cloud API – Webhook
+// ──────────────────────────────────────────────
+
+// GET /api/v1/webhooks/whatsapp-meta – Verify-Challenge bei Webhook-Einrichtung
+webhooksRouter.get('/whatsapp-meta', async (req: Request, res: Response) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  // Globaler Verify-Token kommt aus ENV (pro Meta-App nur einer)
+  const erwartet = process.env.FACEBOOK_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN;
+
+  if (mode === 'subscribe' && typeof token === 'string' && typeof challenge === 'string' && token === erwartet) {
+    logger.info('WhatsApp-Meta Webhook verifiziert');
+    res.status(200).send(challenge);
+    return;
+  }
+
+  logger.warn('WhatsApp-Meta Webhook-Verifikation fehlgeschlagen');
+  res.sendStatus(403);
+});
+
+// POST /api/v1/webhooks/whatsapp-meta – eingehende Nachrichten/Status
+webhooksRouter.post('/whatsapp-meta', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Signatur pruefen (App-Secret der Meta-App)
+    const appSecret = process.env.FACEBOOK_APP_GEHEIMNIS;
+    const signatur = req.headers['x-hub-signature-256'];
+    const rohBody = (req as Request & { rawBody?: string }).rawBody;
+
+    if (appSecret && rohBody) {
+      const { metaWebhookSignaturPruefen } = await import('../dienste/whatsapp-meta.dienst');
+      const istGueltig = metaWebhookSignaturPruefen(
+        rohBody,
+        typeof signatur === 'string' ? signatur : undefined,
+        appSecret,
+      );
+      if (!istGueltig) {
+        logger.warn('WhatsApp-Meta Webhook: Signatur stimmt nicht ueberein');
+        res.sendStatus(401);
+        return;
+      }
+    } else if (!appSecret) {
+      logger.warn('WhatsApp-Meta Webhook: FACEBOOK_APP_GEHEIMNIS fehlt, Signatur-Pruefung uebersprungen');
+    }
+
+    const { metaEingehendeNachrichtParsen } = await import('../dienste/whatsapp-meta.dienst');
+    const nachrichten = metaEingehendeNachrichtParsen(req.body);
+
+    if (nachrichten.length === 0) {
+      // Status-Updates oder andere Events – schnell 200 zurueck
+      res.status(200).json({ erfolg: true });
+      return;
+    }
+
+    // Fuer jede Nachricht: Kampagne ueber phone_number_id finden → Lead suchen/erstellen
+    for (const nachricht of nachrichten) {
+      // Kampagne ueber whatsappMetaPhoneNumberId zuordnen
+      const kampagne = await prisma.kampagne.findFirst({
+        where: {
+          whatsappMetaPhoneNumberId: nachricht.phoneNumberId,
+          geloescht: false,
+        },
+        select: { id: true, kundeId: true, name: true },
+      });
+
+      if (!kampagne) {
+        logger.warn(`WhatsApp-Meta: Keine Kampagne mit phone_number_id ${nachricht.phoneNumberId} gefunden`);
+        continue;
+      }
+
+      // Bestehenden Lead suchen (per Telefon, auf derselben Kampagne)
+      const lead = await prisma.lead.findFirst({
+        where: {
+          kampagneId: kampagne.id,
+          telefon: nachricht.vonTelefon,
+          geloescht: false,
+        },
+        select: { id: true, status: true },
+      });
+
+      if (lead) {
+        // Aktivitaet loggen + Status auf "WhatsApp erhalten" setzen
+        await prisma.leadAktivitaet.create({
+          data: {
+            leadId: lead.id,
+            typ: 'whatsapp_empfangen',
+            beschreibung: nachricht.text
+              ? `WhatsApp-Nachricht empfangen: ${nachricht.text.substring(0, 500)}`
+              : `WhatsApp-Event empfangen (${nachricht.typ})`,
+            metadaten: {
+              metaMessageId: nachricht.metaMessageId,
+              phoneNumberId: nachricht.phoneNumberId,
+              zeitstempel: nachricht.zeitstempel.toISOString(),
+            },
+          },
+        });
+
+        // Status auf "WhatsApp erhalten" setzen (nur wenn nicht schon Endstatus)
+        const endStati = ['Termin gebucht', 'Nicht interessiert', 'Falsche Nummer', 'Nicht erreichbar'];
+        if (!endStati.includes(lead.status)) {
+          await prisma.lead.update({
+            where: { id: lead.id },
+            data: { status: 'WhatsApp erhalten' },
+          });
+          const io = socketServer();
+          if (io) {
+            io.to(`kampagne:${kampagne.id}`).emit('lead:aktualisiert', {
+              lead: { id: lead.id, status: 'WhatsApp erhalten' },
+            });
+          }
+        }
+
+        logger.info(`WhatsApp-Meta: Nachricht von ${nachricht.vonTelefon} zu Lead ${lead.id} (Kampagne ${kampagne.name}) eingetragen`);
+      } else {
+        // Neuer Lead (wie bei Superchat-Flow)
+        const neuerLead = await leadErstellen({
+          kampagneId: kampagne.id,
+          vorname: nachricht.vonName?.split(/\s+/)[0],
+          nachname: nachricht.vonName?.split(/\s+/).slice(1).join(' ') || undefined,
+          telefon: nachricht.vonTelefon,
+          quelle: 'whatsapp',
+          rohdaten: {
+            metaMessageId: nachricht.metaMessageId,
+            phoneNumberId: nachricht.phoneNumberId,
+            text: nachricht.text,
+            zeitstempel: nachricht.zeitstempel.toISOString(),
+          },
+        });
+        logger.info(`WhatsApp-Meta: Neuer Lead ${neuerLead.id} aus WhatsApp-Nachricht (Kampagne ${kampagne.name})`);
+      }
+    }
+
+    res.status(200).json({ erfolg: true });
+  } catch (fehler) {
+    logger.error('WhatsApp-Meta Webhook-Verarbeitung fehlgeschlagen', { error: fehler });
+    next(fehler);
+  }
+});

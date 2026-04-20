@@ -185,10 +185,22 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     return;
   }
 
-  // Prüfe ob Lead zwischenzeitlich per WhatsApp geantwortet hat
+  // Prüfe ob Lead zwischenzeitlich per WhatsApp geantwortet hat (anbieterabhaengig)
   if (lead.telefon && versuch.versuchNummer >= 1) {
     try {
-      const hatGeantwortet = await hatLeadPerWhatsAppGeantwortet(lead.telefon);
+      const kampagneFuerCheck = await prisma.kampagne.findUnique({
+        where: { id: versuch.kampagneId },
+        select: { whatsappAnbieter: true, kundeId: true },
+      });
+
+      let hatGeantwortet = false;
+      if (kampagneFuerCheck?.whatsappAnbieter === 'meta') {
+        const { hatLeadPerWhatsAppMetaGeantwortet } = await import('./whatsapp-meta.dienst');
+        hatGeantwortet = await hatLeadPerWhatsAppMetaGeantwortet(lead.id);
+      } else {
+        hatGeantwortet = await hatLeadPerWhatsAppGeantwortet(lead.telefon, kampagneFuerCheck?.kundeId);
+      }
+
       if (hatGeantwortet) {
         logger.info(`Lead ${lead.id} hat per WhatsApp geantwortet – Anruf übersprungen`);
         await prisma.lead.update({
@@ -833,6 +845,15 @@ type KampagneFuerFollowUp = {
   whatsappTemplateUnerreichbar: string | null;
   whatsappTemplateNichtInteressiert: string | null;
   whatsappKanalId: string | null;
+  // Meta-Anbieter-Felder
+  whatsappAnbieter?: string;
+  whatsappMetaPhoneNumberId?: string | null;
+  whatsappTemplateVerpasstName?: string | null;
+  whatsappTemplateVerpasstSprache?: string | null;
+  whatsappTemplateUnerreichbarName?: string | null;
+  whatsappTemplateUnerreichbarSprache?: string | null;
+  whatsappTemplateNichtInteressiertName?: string | null;
+  whatsappTemplateNichtInteressiertSprache?: string | null;
 };
 
 /**
@@ -902,41 +923,94 @@ export async function followUpDirektSenden(
     }
   }
 
-  // WhatsApp senden (wenn aktiviert + Template + Kanal + Handynummer)
-  if (kampagne.whatsappAktiviert && whatsappTemplateId && kampagne.whatsappKanalId && lead.telefon && istHandynummer(lead.telefon)) {
-    try {
-      const superchatKonfig = await integrationKonfigurationLesenMitFallback('superchat', lead.kampagne?.kundeId || null);
-      if (superchatKonfig?.api_schluessel) {
-        const basisUrl = superchatKonfig.basis_url || 'https://api.superchat.de';
-        let kontakt = await superchatKontaktFinden(
-          { telefon: lead.telefon, email: lead.email },
-          superchatKonfig.api_schluessel,
-          basisUrl
-        );
+  // WhatsApp senden (wenn aktiviert + Handynummer) — Anbieter-Dispatch: Meta oder Superchat
+  if (kampagne.whatsappAktiviert && lead.telefon && istHandynummer(lead.telefon)) {
+    const anbieter = kampagne.whatsappAnbieter || 'superchat';
 
-        if (!kontakt) {
-          kontakt = await superchatKontaktErstellen(
-            { telefon: lead.telefon, vorname: lead.vorname || undefined, nachname: lead.nachname || undefined, email: lead.email || undefined },
-            superchatKonfig.api_schluessel,
-            basisUrl
-          );
-        }
+    if (anbieter === 'meta') {
+      // Meta WhatsApp Cloud API
+      const metaTemplateName: string | null = {
+        verpasst: kampagne.whatsappTemplateVerpasstName,
+        voicemail: null,
+        unerreichbar: kampagne.whatsappTemplateUnerreichbarName,
+        nichtInteressiert: kampagne.whatsappTemplateNichtInteressiertName,
+        terminBestaetigung: null,
+        rueckruf: kampagne.whatsappTemplateVerpasstName,
+      }[grund] || null;
 
-        if (kontakt) {
-          await superchatTemplateNachrichtSenden(
-            kontakt.id,
-            kampagne.whatsappKanalId,
-            whatsappTemplateId,
-            [{ name: 'vorname', wert: lead.vorname || '' }],
-            superchatKonfig.api_schluessel,
-            basisUrl
-          );
-          await aktivitaetLoggen(leadId, 'whatsapp_gesendet',
-            `Follow-up WhatsApp gesendet: ${grundBezeichnung[grund]}`);
+      const metaTemplateSprache: string = ({
+        verpasst: kampagne.whatsappTemplateVerpasstSprache,
+        voicemail: null,
+        unerreichbar: kampagne.whatsappTemplateUnerreichbarSprache,
+        nichtInteressiert: kampagne.whatsappTemplateNichtInteressiertSprache,
+        terminBestaetigung: null,
+        rueckruf: kampagne.whatsappTemplateVerpasstSprache,
+      }[grund]) || 'de';
+
+      if (metaTemplateName && kampagne.whatsappMetaPhoneNumberId) {
+        try {
+          const whatsappKonfig = await integrationKonfigurationLesenMitFallback('whatsapp', lead.kampagne?.kundeId || null);
+          if (whatsappKonfig?.zugriffstoken) {
+            const { metaTemplateNachrichtSenden } = await import('./whatsapp-meta.dienst');
+            const ergebnis = await metaTemplateNachrichtSenden(
+              kampagne.whatsappMetaPhoneNumberId,
+              lead.telefon,
+              metaTemplateName,
+              metaTemplateSprache,
+              [{ name: 'vorname', wert: lead.vorname || '' }],
+              whatsappKonfig.zugriffstoken,
+            );
+            if (ergebnis.erfolg) {
+              await aktivitaetLoggen(leadId, 'whatsapp_gesendet',
+                `Follow-up WhatsApp (Meta) gesendet: ${grundBezeichnung[grund]}`);
+            } else {
+              logger.error('Meta WhatsApp-Versand fehlgeschlagen', { leadId, grund, fehler: ergebnis.fehler });
+            }
+          } else {
+            logger.warn(`Meta WhatsApp nicht verbunden fuer Kunde ${lead.kampagne?.kundeId}`);
+          }
+        } catch (fehler) {
+          logger.error('Follow-up WhatsApp (Meta) fehlgeschlagen:', { leadId, grund, error: fehler });
         }
       }
-    } catch (fehler) {
-      logger.error('Follow-up WhatsApp fehlgeschlagen:', { leadId, grund, error: fehler });
+    } else {
+      // Superchat (bestehender Flow)
+      if (whatsappTemplateId && kampagne.whatsappKanalId) {
+        try {
+          const superchatKonfig = await integrationKonfigurationLesenMitFallback('superchat', lead.kampagne?.kundeId || null);
+          if (superchatKonfig?.api_schluessel) {
+            const basisUrl = superchatKonfig.basis_url || 'https://api.superchat.de';
+            let kontakt = await superchatKontaktFinden(
+              { telefon: lead.telefon, email: lead.email },
+              superchatKonfig.api_schluessel,
+              basisUrl
+            );
+
+            if (!kontakt) {
+              kontakt = await superchatKontaktErstellen(
+                { telefon: lead.telefon, vorname: lead.vorname || undefined, nachname: lead.nachname || undefined, email: lead.email || undefined },
+                superchatKonfig.api_schluessel,
+                basisUrl
+              );
+            }
+
+            if (kontakt) {
+              await superchatTemplateNachrichtSenden(
+                kontakt.id,
+                kampagne.whatsappKanalId,
+                whatsappTemplateId,
+                [{ name: 'vorname', wert: lead.vorname || '' }],
+                superchatKonfig.api_schluessel,
+                basisUrl
+              );
+              await aktivitaetLoggen(leadId, 'whatsapp_gesendet',
+                `Follow-up WhatsApp gesendet: ${grundBezeichnung[grund]}`);
+            }
+          }
+        } catch (fehler) {
+          logger.error('Follow-up WhatsApp fehlgeschlagen:', { leadId, grund, error: fehler });
+        }
+      }
     }
   }
 }

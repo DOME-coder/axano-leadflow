@@ -40,7 +40,11 @@ function kampagneAmpel(
 
   if (kampagne.vapiAktiviert) { benoetigt.push('vapi'); benoetigt.push('anthropic'); }
   if (kampagne.emailAktiviert) benoetigt.push('smtp');
-  if (kampagne.whatsappAktiviert) benoetigt.push('superchat');
+  if (kampagne.whatsappAktiviert) {
+    // Anbieter-abhaengig: Meta oder Superchat
+    const anbieter = (kampagne as Kampagne & { whatsappAnbieter?: string }).whatsappAnbieter || 'superchat';
+    benoetigt.push(anbieter === 'meta' ? 'whatsapp' : 'superchat');
+  }
 
   if (benoetigt.length === 0) return { status: 'ok', titel: 'Keine Integrationen benötigt' };
 

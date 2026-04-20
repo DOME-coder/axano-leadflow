@@ -72,7 +72,13 @@ app.use(cors({
   ].filter(Boolean),
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  // Roh-Body speichern, damit Webhook-Signaturen geprueft werden koennen (Meta HMAC)
+  verify: (req, _res, buf) => {
+    (req as express.Request & { rawBody?: string }).rawBody = buf.toString('utf8');
+  },
+}));
 app.use(cookieParser());
 app.use(morgan('combined', {
   stream: { write: (nachricht: string) => logger.info(nachricht.trim()) },
