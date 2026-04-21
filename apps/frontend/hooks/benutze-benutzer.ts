@@ -71,3 +71,15 @@ export function benutzeBenutzerEinladungNeuSenden() {
     },
   });
 }
+
+export function benutzeBenutzerLoeschen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (benutzerId: string) => {
+      await apiClient.delete(`/benutzer/${benutzerId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['benutzer'] });
+    },
+  });
+}

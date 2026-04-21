@@ -154,17 +154,30 @@ benutzerRouter.patch('/:id', nurAdmin, async (req: Request, res: Response, next:
   }
 });
 
-// DELETE /api/v1/benutzer/:id (nur Admin – deaktivieren)
+// DELETE /api/v1/benutzer/:id (nur Admin – echtes Loeschen)
+// Entfernt den Benutzer endgueltig. Referenzen in Kampagnen (ersteller),
+// Leads (zugewiesener) und LeadNotiz (autor) werden zuvor auf null gesetzt,
+// damit keine FK-Constraints verletzt werden. BenutzerEinladung wird via
+// onDelete: Cascade automatisch mitgeloescht.
 benutzerRouter.delete('/:id', nurAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (req.params.id === req.benutzer!.benutzerId) {
-      throw new AppFehler('Sie können sich nicht selbst deaktivieren', 400, 'SELBST_DEAKTIVIERUNG');
+      throw new AppFehler('Sie koennen sich nicht selbst loeschen', 400, 'SELBST_LOESCHUNG');
     }
-    await prisma.benutzer.update({
-      where: { id: req.params.id },
-      data: { aktiv: false },
-    });
-    res.json({ erfolg: true, nachricht: 'Benutzer deaktiviert' });
+
+    const bestehend = await prisma.benutzer.findUnique({ where: { id: req.params.id } });
+    if (!bestehend) {
+      throw new AppFehler('Benutzer nicht gefunden', 404, 'NICHT_GEFUNDEN');
+    }
+
+    await prisma.$transaction([
+      prisma.kampagne.updateMany({ where: { erstelltVon: req.params.id }, data: { erstelltVon: null } }),
+      prisma.lead.updateMany({ where: { zugewiesenAn: req.params.id }, data: { zugewiesenAn: null } }),
+      prisma.leadNotiz.updateMany({ where: { autorId: req.params.id }, data: { autorId: null } }),
+      prisma.benutzer.delete({ where: { id: req.params.id } }),
+    ]);
+
+    res.json({ erfolg: true, nachricht: 'Benutzer geloescht' });
   } catch (fehler) {
     next(fehler);
   }
