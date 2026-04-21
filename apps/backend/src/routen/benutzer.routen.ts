@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { prisma } from '../datenbank/prisma.client';
 import { authentifizierung, nurAdmin } from '../middleware/authentifizierung';
 import { AppFehler } from '../middleware/fehlerbehandlung';
@@ -162,6 +163,69 @@ benutzerRouter.delete('/:id', nurAdmin, async (req: Request, res: Response, next
       data: { aktiv: false },
     });
     res.json({ erfolg: true, nachricht: 'Benutzer deaktiviert' });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// POST /api/v1/benutzer/einladen (nur Admin)
+// Legt einen Kunden-Benutzer an (rolle='kunde', aktiv=false) und versendet Einladungs-E-Mail.
+const einladenSchema = z.object({
+  email: z.string().email('Ungueltige E-Mail-Adresse'),
+  vorname: z.string().min(1, 'Vorname ist erforderlich'),
+  nachname: z.string().min(1, 'Nachname ist erforderlich'),
+  kundeId: z.string().uuid('Kunden-ID ist erforderlich'),
+});
+
+benutzerRouter.post('/einladen', nurAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const daten = einladenSchema.parse(req.body);
+
+    const bestehend = await prisma.benutzer.findUnique({ where: { email: daten.email } });
+    if (bestehend) {
+      throw new AppFehler('E-Mail-Adresse ist bereits vergeben', 409, 'EMAIL_EXISTIERT');
+    }
+
+    const kunde = await prisma.kunde.findUnique({ where: { id: daten.kundeId } });
+    if (!kunde) {
+      throw new AppFehler('Kunde nicht gefunden', 404, 'NICHT_GEFUNDEN');
+    }
+
+    // Platzhalter-Passwort (wird beim Einloesen der Einladung ueberschrieben)
+    const platzhalterHash = await bcrypt.hash(crypto.randomUUID(), 12);
+
+    const benutzer = await prisma.benutzer.create({
+      data: {
+        email: daten.email,
+        vorname: daten.vorname,
+        nachname: daten.nachname,
+        passwortHash: platzhalterHash,
+        rolle: 'kunde',
+        aktiv: false,
+        kundeId: daten.kundeId,
+      },
+      select: {
+        id: true,
+        email: true,
+        vorname: true,
+        nachname: true,
+        rolle: true,
+        aktiv: true,
+        kundeId: true,
+        kunde: { select: { id: true, name: true } },
+        erstelltAm: true,
+      },
+    });
+
+    const { einladungErstellen, emailEinladungSenden } = await import('../dienste/benutzer-einladung.dienst');
+    const { klartextToken } = await einladungErstellen(benutzer.id);
+    await emailEinladungSenden(
+      { email: benutzer.email, vorname: benutzer.vorname, nachname: benutzer.nachname },
+      klartextToken,
+      kunde.name,
+    );
+
+    res.status(201).json({ erfolg: true, daten: benutzer });
   } catch (fehler) {
     next(fehler);
   }

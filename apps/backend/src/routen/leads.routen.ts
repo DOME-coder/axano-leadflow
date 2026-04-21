@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import {
   leadsAuflisten,
   leadAbrufen,
@@ -13,10 +13,12 @@ import { prisma } from '../datenbank/prisma.client';
 
 export const leadsRouter = Router();
 leadsRouter.use(authentifizierung);
+leadsRouter.use(nurAdminOderMitarbeiter);
 
 // GET /api/v1/kampagnen/:kampagneId/leads
 export const kampagneLeadsRouter = Router({ mergeParams: true });
 kampagneLeadsRouter.use(authentifizierung);
+kampagneLeadsRouter.use(nurAdminOderMitarbeiter);
 
 kampagneLeadsRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {

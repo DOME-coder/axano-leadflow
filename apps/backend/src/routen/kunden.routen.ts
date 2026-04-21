@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import {
   kundenAuflisten,
   kundeErstellen,
@@ -11,6 +11,7 @@ import {
 
 export const kundenRouter = Router();
 kundenRouter.use(authentifizierung);
+kundenRouter.use(nurAdminOderMitarbeiter);
 
 const kundeErstellenSchema = z.object({
   name: z.string().min(1, 'Name ist erforderlich').max(255),

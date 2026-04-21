@@ -1,11 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { authentifizierung, nurAdmin } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdmin, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import { integrationenAuflisten, integrationSpeichern, integrationenStatusAuflisten } from '../dienste/integrationen.dienst';
 import { logger } from '../hilfsfunktionen/logger';
 
 export const integrationenRouter = Router();
 integrationenRouter.use(authentifizierung);
+// Der Status-Endpoint ist fuer Admin + Mitarbeiter, nicht fuer Kunden
+integrationenRouter.use(nurAdminOderMitarbeiter);
 
 // GET /api/v1/integrationen/status (für alle authentifizierten Benutzer)
 integrationenRouter.get('/status', async (_req: Request, res: Response, next: NextFunction) => {

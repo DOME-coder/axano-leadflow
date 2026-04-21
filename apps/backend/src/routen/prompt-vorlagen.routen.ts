@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import {
   promptVorlagenAuflisten,
   promptVorlageErstellen,
@@ -12,6 +12,7 @@ import {
 
 export const promptVorlagenRouter = Router();
 promptVorlagenRouter.use(authentifizierung);
+promptVorlagenRouter.use(nurAdminOderMitarbeiter);
 
 const erstellenSchema = z.object({
   name: z.string().min(1, 'Name ist erforderlich'),

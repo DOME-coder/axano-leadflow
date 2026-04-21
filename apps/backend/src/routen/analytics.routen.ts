@@ -1,9 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import { plattformUebersicht, kampagnenAnalytics } from '../dienste/analytics.dienst';
 
 export const analyticsRouter = Router();
 analyticsRouter.use(authentifizierung);
+analyticsRouter.use(nurAdminOderMitarbeiter);
 
 // GET /api/v1/analytics/uebersicht
 analyticsRouter.get('/uebersicht', async (req: Request, res: Response, next: NextFunction) => {

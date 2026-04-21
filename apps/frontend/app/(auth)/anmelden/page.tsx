@@ -56,7 +56,8 @@ export default function AnmeldenSeite() {
 
       localStorage.setItem('access_token', ergebnis.daten.access_token);
       benutzerSetzen(ergebnis.daten.benutzer);
-      router.push('/dashboard');
+      const zielPfad = ergebnis.daten.benutzer?.rolle === 'kunde' ? '/meine-integrationen' : '/dashboard';
+      router.push(zielPfad);
     } catch {
       setFehlerNachricht('Verbindung zum Server fehlgeschlagen');
     } finally {

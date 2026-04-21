@@ -14,10 +14,16 @@ const anmeldeSchema = z.object({
   passwort: z.string().min(1, 'Passwort ist erforderlich'),
 });
 
-function tokenErstellen(benutzerId: string, email: string, rolle: string): string {
+function tokenErstellen(benutzerId: string, email: string, rolle: string, kundeId?: string | null): string {
   const geheimnis = process.env.JWT_GEHEIMNIS;
   if (!geheimnis) throw new AppFehler('Server-Konfigurationsfehler', 500, 'KONFIG_FEHLER');
-  return jwt.sign({ benutzerId, email, rolle }, geheimnis, {
+  const nutzlast: { benutzerId: string; email: string; rolle: string; kundeId?: string } = {
+    benutzerId,
+    email,
+    rolle,
+  };
+  if (kundeId) nutzlast.kundeId = kundeId;
+  return jwt.sign(nutzlast, geheimnis, {
     expiresIn: (process.env.JWT_ABLAUF || '8h') as string & jwt.SignOptions['expiresIn'],
   } as jwt.SignOptions);
 }
@@ -83,7 +89,7 @@ authRouter.post('/anmelden', async (req: Request, res: Response, next: NextFunct
       data: { loginVersuche: 0, gesperrtBis: null, letzterLogin: new Date() },
     });
 
-    const accessToken = tokenErstellen(benutzer.id, benutzer.email, benutzer.rolle);
+    const accessToken = tokenErstellen(benutzer.id, benutzer.email, benutzer.rolle, benutzer.kundeId);
     const refreshToken = refreshTokenErstellen(benutzer.id);
 
     res.cookie('refresh_token', refreshToken, {
@@ -95,6 +101,16 @@ authRouter.post('/anmelden', async (req: Request, res: Response, next: NextFunct
 
     logger.info(`Benutzer angemeldet: ${email}`);
 
+    // Kunde-Info fuer Frontend (Sidebar zeigt Firmennamen bei Kunden-Rolle)
+    let kundeInfo: { id: string; name: string } | null = null;
+    if (benutzer.kundeId) {
+      const kunde = await prisma.kunde.findUnique({
+        where: { id: benutzer.kundeId },
+        select: { id: true, name: true },
+      });
+      if (kunde) kundeInfo = kunde;
+    }
+
     res.json({
       erfolg: true,
       daten: {
@@ -105,6 +121,8 @@ authRouter.post('/anmelden', async (req: Request, res: Response, next: NextFunct
           vorname: benutzer.vorname,
           nachname: benutzer.nachname,
           rolle: benutzer.rolle,
+          kundeId: benutzer.kundeId,
+          kunde: kundeInfo,
         },
       },
     });
@@ -133,7 +151,7 @@ authRouter.post('/token-erneuern', async (req: Request, res: Response, next: Nex
       throw new AppFehler('Ungültiger Token', 401, 'TOKEN_UNGUELTIG');
     }
 
-    const neuerAccessToken = tokenErstellen(benutzer.id, benutzer.email, benutzer.rolle);
+    const neuerAccessToken = tokenErstellen(benutzer.id, benutzer.email, benutzer.rolle, benutzer.kundeId);
 
     res.json({
       erfolg: true,
@@ -150,6 +168,86 @@ authRouter.post('/abmelden', authentifizierung, (_req: Request, res: Response) =
   res.json({ erfolg: true, nachricht: 'Erfolgreich abgemeldet' });
 });
 
+// GET /api/v1/auth/einladung-pruefen?token=xxx (public)
+// Validiert einen Einladungs-Token und gibt Metadaten zum Kontext zurueck.
+// Wird vom Frontend /einladung/[token] Seite aufgerufen, bevor das Passwort-Formular angezeigt wird.
+authRouter.get('/einladung-pruefen', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    if (!token) {
+      res.status(400).json({ erfolg: false, fehler: 'Token fehlt' });
+      return;
+    }
+    const { einladungValidieren } = await import('../dienste/benutzer-einladung.dienst');
+    const ergebnis = await einladungValidieren(token);
+    if (!ergebnis) {
+      res.status(400).json({ erfolg: false, fehler: 'Einladung ist ungueltig, abgelaufen oder bereits eingeloest' });
+      return;
+    }
+    res.json({
+      erfolg: true,
+      daten: {
+        email: ergebnis.benutzer.email,
+        vorname: ergebnis.benutzer.vorname,
+        kundeName: ergebnis.benutzer.kunde?.name || null,
+      },
+    });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// POST /api/v1/auth/einladung-annehmen (public)
+// Setzt Passwort, aktiviert Benutzer und logt ihn automatisch ein.
+const einladungAnnehmenSchema = z.object({
+  token: z.string().min(1, 'Token ist erforderlich'),
+  passwort: z.string().min(10, 'Passwort muss mindestens 10 Zeichen lang sein'),
+});
+
+authRouter.post('/einladung-annehmen', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { token, passwort } = einladungAnnehmenSchema.parse(req.body);
+    const { einladungEinloesen } = await import('../dienste/benutzer-einladung.dienst');
+
+    let benutzer;
+    try {
+      benutzer = await einladungEinloesen(token, passwort);
+    } catch {
+      throw new AppFehler('Einladung ist ungueltig, abgelaufen oder bereits eingeloest', 400, 'EINLADUNG_UNGUELTIG');
+    }
+
+    const accessToken = tokenErstellen(benutzer.id, benutzer.email, 'kunde', benutzer.kundeId);
+    const refreshToken = refreshTokenErstellen(benutzer.id);
+
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    logger.info(`Einladung eingeloest – Benutzer angemeldet: ${benutzer.email}`);
+
+    res.json({
+      erfolg: true,
+      daten: {
+        access_token: accessToken,
+        benutzer: {
+          id: benutzer.id,
+          email: benutzer.email,
+          vorname: benutzer.vorname,
+          nachname: benutzer.nachname,
+          rolle: 'kunde',
+          kundeId: benutzer.kundeId,
+          kunde: benutzer.kunde,
+        },
+      },
+    });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
 // GET /api/v1/auth/profil
 authRouter.get('/profil', authentifizierung, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -161,6 +259,8 @@ authRouter.get('/profil', authentifizierung, async (req: Request, res: Response,
         vorname: true,
         nachname: true,
         rolle: true,
+        kundeId: true,
+        kunde: { select: { id: true, name: true } },
         letzterLogin: true,
         erstelltAm: true,
       },

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import {
   automatisierungenAuflisten,
   automatisierungErstellen,
@@ -12,10 +12,12 @@ import {
 // Routen unter /api/v1/kampagnen/:kampagneId/automatisierungen
 export const kampagneAutomatisierungenRouter = Router({ mergeParams: true });
 kampagneAutomatisierungenRouter.use(authentifizierung);
+kampagneAutomatisierungenRouter.use(nurAdminOderMitarbeiter);
 
 // Routen unter /api/v1/automatisierungen
 export const automatisierungenRouter = Router();
 automatisierungenRouter.use(authentifizierung);
+automatisierungenRouter.use(nurAdminOderMitarbeiter);
 
 const schrittSchema = z.object({
   reihenfolge: z.number(),

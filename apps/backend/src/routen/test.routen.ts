@@ -1,12 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import { leadErstellen } from '../dienste/lead.dienst';
 import { prisma } from '../datenbank/prisma.client';
 import { logger } from '../hilfsfunktionen/logger';
 
 export const testRouter = Router();
 testRouter.use(authentifizierung);
+testRouter.use(nurAdminOderMitarbeiter);
 
 const testLeadSchema = z.object({
   kampagneSlug: z.string().min(1, 'Kampagne-Slug ist erforderlich'),

@@ -1,14 +1,16 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../datenbank/prisma.client';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import { anrufSequenzStarten, sofortigenAnrufPlanen } from '../dienste/anruf.dienst';
 
 export const anrufeRouter = Router();
 anrufeRouter.use(authentifizierung);
+anrufeRouter.use(nurAdminOderMitarbeiter);
 
 // Kampagnen-spezifische Anruf-Routen
 export const kampagneAnrufeRouter = Router({ mergeParams: true });
 kampagneAnrufeRouter.use(authentifizierung);
+kampagneAnrufeRouter.use(nurAdminOderMitarbeiter);
 
 // GET /api/v1/kampagnen/:kampagneId/anrufe
 kampagneAnrufeRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {

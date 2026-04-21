@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../datenbank/prisma.client';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import {
   kampagnenAuflisten,
   kampagneErstellen,
@@ -14,6 +14,7 @@ import { kampagneInhalteMitBibliothek } from '../dienste/ki-generierung.dienst';
 
 export const kampagnenRouter = Router();
 kampagnenRouter.use(authentifizierung);
+kampagnenRouter.use(nurAdminOderMitarbeiter);
 
 const kampagneErstellenSchema = z.object({
   name: z.string().min(1, 'Name ist erforderlich').max(255),

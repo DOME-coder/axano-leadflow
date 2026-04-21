@@ -19,19 +19,39 @@ model Benutzer {
   letzterLogin   DateTime? @map("letzter_login")
   loginVersuche  Int       @default(0) @map("login_versuche")
   gesperrtBis    DateTime? @map("gesperrt_bis")
+  // Fuer Rolle "kunde": Zuordnung zum Kunden-Account. Admin/Mitarbeiter haben null.
+  kundeId        String?   @map("kunde_id")
+  kunde          Kunde?    @relation(fields: [kundeId], references: [id])
   erstelltAm     DateTime  @default(now()) @map("erstellt_am")
   aktualisiertAm DateTime  @updatedAt @map("aktualisiert_am")
 
-  kampagnen Kampagne[]
-  leads     Lead[]       @relation("ZugewiesenAn")
-  notizen   LeadNotiz[]
+  kampagnen  Kampagne[]
+  leads      Lead[]              @relation("ZugewiesenAn")
+  notizen    LeadNotiz[]
+  einladung  BenutzerEinladung?
 
+  @@index([kundeId])
   @@map("benutzer")
 }
 
 enum Rolle {
   admin
   mitarbeiter
+  kunde
+}
+
+/// Einladungs-Token fuer Kunden-User. Token wird nur als SHA-256-Hash gespeichert,
+/// nie im Klartext. Gueltig fuer 7 Tage, ein-Mal-nutzbar.
+model BenutzerEinladung {
+  id           String    @id @default(uuid())
+  benutzerId   String    @unique @map("benutzer_id")
+  benutzer     Benutzer  @relation(fields: [benutzerId], references: [id], onDelete: Cascade)
+  tokenHash    String    @unique @map("token_hash")
+  ablaufAm     DateTime  @map("ablauf_am")
+  eingeloestAm DateTime? @map("eingeloest_am")
+  erstelltAm   DateTime  @default(now()) @map("erstellt_am")
+
+  @@map("benutzer_einladungen")
 }
 
 model Kampagne {
@@ -112,6 +132,7 @@ model Kunde {
 
   kampagnen     Kampagne[]
   integrationen KundenIntegration[]
+  benutzer      Benutzer[]
 
   @@map("kunden")
 }

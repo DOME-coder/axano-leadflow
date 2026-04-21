@@ -45,3 +45,16 @@ export function benutzeBenutzerAktualisieren() {
     },
   });
 }
+
+export function benutzeBenutzerEinladen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (daten: { email: string; vorname: string; nachname: string; kundeId: string }) => {
+      const { data } = await apiClient.post('/benutzer/einladen', daten);
+      return data.daten as Benutzer;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['benutzer'] });
+    },
+  });
+}

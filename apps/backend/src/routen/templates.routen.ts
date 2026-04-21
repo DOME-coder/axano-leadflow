@@ -1,12 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../datenbank/prisma.client';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 import { AppFehler } from '../middleware/fehlerbehandlung';
 import { variablenAufloesen } from '../hilfsfunktionen/variablen';
 
 export const templatesRouter = Router();
 templatesRouter.use(authentifizierung);
+templatesRouter.use(nurAdminOderMitarbeiter);
 
 const templateSchema = z.object({
   name: z.string().min(1, 'Name ist erforderlich'),

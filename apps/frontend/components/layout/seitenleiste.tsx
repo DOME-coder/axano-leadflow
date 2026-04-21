@@ -13,12 +13,13 @@ import {
   LogOut,
   Building2,
   BookOpen,
+  Plug,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useUiStore } from '@/stores/ui-store';
 import { benutzeKunden } from '@/hooks/benutze-kunden';
 
-const navElemente = [
+const navElementeTeam = [
   { bezeichnung: 'Dashboard', pfad: '/dashboard', icon: LayoutDashboard },
   { bezeichnung: 'Kampagnen', pfad: '/kampagnen', icon: Megaphone },
   { bezeichnung: 'Kunden', pfad: '/kunden', icon: Building2 },
@@ -27,6 +28,10 @@ const navElemente = [
   { bezeichnung: 'Analytics', pfad: '/analytics', icon: BarChart2 },
   { bezeichnung: 'Kalender', pfad: '/kalender', icon: Calendar },
   { bezeichnung: 'Einstellungen', pfad: '/einstellungen', icon: Settings },
+];
+
+const navElementeKunde = [
+  { bezeichnung: 'Meine Integrationen', pfad: '/meine-integrationen', icon: Plug },
 ];
 
 export function Seitenleiste() {
@@ -49,7 +54,13 @@ export function Seitenleiste() {
     ? `${benutzer.vorname} ${benutzer.nachname.charAt(0)}.`
     : 'Admin';
 
-  const rolleAnzeige = benutzer?.rolle === 'admin' ? 'Administrator' : 'Mitarbeiter';
+  const istKunde = benutzer?.rolle === 'kunde';
+  const navElemente = istKunde ? navElementeKunde : navElementeTeam;
+  const rolleAnzeige = istKunde
+    ? benutzer?.kunde?.name || 'Kunde'
+    : benutzer?.rolle === 'admin'
+    ? 'Administrator'
+    : 'Mitarbeiter';
 
   return (
     <aside
@@ -72,8 +83,8 @@ export function Seitenleiste() {
         </div>
       </div>
 
-      {/* Kunden-Filter */}
-      {kunden?.eintraege && kunden.eintraege.length > 0 && (
+      {/* Kunden-Filter (nur fuer Axano-Team) */}
+      {!istKunde && kunden?.eintraege && kunden.eintraege.length > 0 && (
         <div className="px-3 pt-4 pb-2">
           <label className="text-white/40 text-[10px] font-semibold uppercase tracking-[0.14em] px-2 mb-1.5 block">
             Kunde

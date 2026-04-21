@@ -26,8 +26,10 @@ export interface Benutzer {
   email: string;
   vorname: string;
   nachname: string;
-  rolle: 'admin' | 'mitarbeiter';
+  rolle: 'admin' | 'mitarbeiter' | 'kunde';
   aktiv: boolean;
+  kundeId?: string | null;
+  kunde?: { id: string; name: string } | null;
   letzterLogin: string | null;
   erstelltAm: string;
 }

@@ -5,7 +5,11 @@ interface BenutzerDaten {
   email: string;
   vorname: string;
   nachname: string;
-  rolle: 'admin' | 'mitarbeiter';
+  rolle: 'admin' | 'mitarbeiter' | 'kunde';
+  /** Nur bei Rolle "kunde" gesetzt */
+  kundeId?: string | null;
+  /** Nur bei Rolle "kunde" gesetzt — Name des zugeordneten Kunden (fuer Anzeige) */
+  kunde?: { id: string; name: string } | null;
 }
 
 interface AuthZustand {

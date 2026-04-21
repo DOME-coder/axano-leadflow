@@ -1,9 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../datenbank/prisma.client';
-import { authentifizierung } from '../middleware/authentifizierung';
+import { authentifizierung, nurAdminOderMitarbeiter } from '../middleware/authentifizierung';
 
 export const termineRouter = Router();
 termineRouter.use(authentifizierung);
+termineRouter.use(nurAdminOderMitarbeiter);
 
 // GET /api/v1/termine
 // Query: von, bis (ISO-Date), kundeId (optional), kampagneId (optional), quelle (optional)

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { google } from 'googleapis';
-import { authentifizierung, nurAdmin } from '../middleware/authentifizierung';
+import { authentifizierung, kundenSelbstzugriff } from '../middleware/authentifizierung';
 import {
   kundenIntegrationenAuflisten,
   kundenIntegrationSpeichern,
@@ -12,7 +12,8 @@ import { logger } from '../hilfsfunktionen/logger';
 
 export const kundenIntegrationenRouter = Router({ mergeParams: true });
 kundenIntegrationenRouter.use(authentifizierung);
-kundenIntegrationenRouter.use(nurAdmin);
+// Kunden-Rolle darf nur auf eigene Kunden-Integrationen zugreifen; Admin/Mitarbeiter auf alle.
+kundenIntegrationenRouter.use(kundenSelbstzugriff('kundeId'));
 
 // GET /api/v1/kunden/:kundeId/integrationen
 kundenIntegrationenRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
