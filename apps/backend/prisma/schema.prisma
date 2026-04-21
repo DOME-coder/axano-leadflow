@@ -64,6 +64,7 @@ model Kampagne {
   webhookSlug          String?         @unique @map("webhook_slug")
   pipelineSpalten      Json            @default("[\"Neu\",\"Anruf läuft\",\"Voicemail\",\"Follow-up\",\"Nicht erreichbar\",\"Falsche Nummer\",\"Nicht interessiert\",\"Termin gebucht\"]") @map("pipeline_spalten")
   vapiAktiviert         Boolean         @default(false) @map("vapi_aktiviert")
+  istDemoVerfuegbar    Boolean         @default(false) @map("ist_demo_verfuegbar")
   vapiAssistantId       String?         @map("vapi_assistant_id")
   vapiPhoneNumberId     String?         @map("vapi_phone_number_id")
   vapiPrompt            String?         @map("vapi_prompt") @db.Text

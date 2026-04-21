@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Save, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Save, Copy, Check, PhoneCall, ExternalLink } from 'lucide-react';
 import { benutzeKampagne } from '@/hooks/benutze-kampagnen';
 import { benutzeKampagneEinstellungenSpeichern } from '@/hooks/benutze-kampagne-einstellungen';
 import { benutzeFacebookForms } from '@/hooks/benutze-kunden-integrationen';
@@ -54,6 +54,14 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
   const { toastAnzeigen } = useToastStore();
   const [werte, setWerte] = useState<KanalKonfigurationWerte>(standardWerte);
   const [kopiert, setKopiert] = useState(false);
+  const [demoKopiert, setDemoKopiert] = useState(false);
+  const [istDemoVerfuegbar, setIstDemoVerfuegbar] = useState(false);
+
+  useEffect(() => {
+    if (kampagne) {
+      setIstDemoVerfuegbar(((kampagne as unknown as Record<string, unknown>).istDemoVerfuegbar as boolean) ?? false);
+    }
+  }, [kampagne]);
 
   useEffect(() => {
     if (kampagne) {
@@ -115,6 +123,28 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
       await navigator.clipboard.writeText(webhookUrl);
       setKopiert(true);
       setTimeout(() => setKopiert(false), 2000);
+    }
+  };
+
+  const demoUrl = kampagne?.webhookSlug && typeof window !== 'undefined'
+    ? `${window.location.origin}/demo/${kampagne.webhookSlug}`
+    : null;
+
+  const demoLinkKopieren = async () => {
+    if (demoUrl) {
+      await navigator.clipboard.writeText(demoUrl);
+      setDemoKopiert(true);
+      setTimeout(() => setDemoKopiert(false), 2000);
+    }
+  };
+
+  const demoFreigabeUmschalten = async (neuerWert: boolean) => {
+    try {
+      await speichern.mutateAsync({ id, istDemoVerfuegbar: neuerWert });
+      setIstDemoVerfuegbar(neuerWert);
+      toastAnzeigen('erfolg', neuerWert ? 'Demo freigeschaltet' : 'Demo deaktiviert');
+    } catch {
+      toastAnzeigen('fehler', 'Demo-Status konnte nicht geaendert werden');
     }
   };
 
@@ -204,6 +234,76 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
                 </button>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Demo-Anruf Freigabe */}
+      {kampagne && (
+        <div className="ax-karte rounded-xl p-5 mb-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-axano-orange/10 flex items-center justify-center flex-shrink-0">
+                <PhoneCall className="w-4 h-4 text-axano-orange" strokeWidth={2.2} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold ax-titel">Demo-Anruf freigeben</h3>
+                <p className="text-xs ax-text-sekundaer mt-0.5">
+                  Erzeugt eine oeffentliche URL, mit der Interessenten die KI dieser Kampagne live testen koennen.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => demoFreigabeUmschalten(!istDemoVerfuegbar)}
+              disabled={speichern.isPending}
+              className={`w-11 h-6 rounded-full transition-all relative flex-shrink-0 ${
+                istDemoVerfuegbar ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+              title={istDemoVerfuegbar ? 'Demo deaktivieren' : 'Demo aktivieren'}
+            >
+              <div
+                className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow ${
+                  istDemoVerfuegbar ? 'left-[22px]' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
+          {istDemoVerfuegbar && demoUrl && (
+            <>
+              <label className="text-xs font-medium ax-text-sekundaer mb-1 block mt-4">Demo-URL (oeffentlich)</label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs ax-karte-erhoeht rounded-lg px-3 py-2 ax-text break-all select-all">
+                  {demoUrl}
+                </code>
+                <button
+                  onClick={demoLinkKopieren}
+                  className="p-2 rounded-lg ax-hover ax-text-sekundaer transition-all flex-shrink-0"
+                  title="Link kopieren"
+                >
+                  {demoKopiert ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                </button>
+                <a
+                  href={demoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg ax-hover ax-text-sekundaer transition-all flex-shrink-0"
+                  title="In neuem Tab oeffnen"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+              <p className="text-xs ax-text-tertiaer mt-2 leading-relaxed">
+                Jeder mit dieser URL kann einen Anruf ausloesen. Rate-Limit: max. 3 Anrufe pro Stunde pro IP,
+                1 Anruf pro 10 Minuten pro Telefonnummer. Damit die Demo funktioniert, muss <strong>VAPI aktiviert</strong>
+                sein und Assistant + Phone-Number konfiguriert sein.
+              </p>
+            </>
+          )}
+          {!istDemoVerfuegbar && (
+            <p className="text-xs ax-text-tertiaer mt-2 leading-relaxed">
+              Aktiviere die Demo-Freigabe, um eine oeffentliche URL zu erhalten.
+            </p>
           )}
         </div>
       )}

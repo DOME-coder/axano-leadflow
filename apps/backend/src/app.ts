@@ -19,6 +19,7 @@ import { kundenRouter } from './routen/kunden.routen';
 import { promptVorlagenRouter } from './routen/prompt-vorlagen.routen';
 import { leadsRouter, kampagneLeadsRouter } from './routen/leads.routen';
 import { webhooksRouter } from './routen/webhooks.routen';
+import { demoRouter } from './routen/demo.routen';
 import { kampagneAutomatisierungenRouter, automatisierungenRouter } from './routen/automatisierungen.routen';
 import { templatesRouter } from './routen/templates.routen';
 import { integrationenRouter } from './routen/integrationen.routen';
@@ -115,6 +116,7 @@ app.use('/api/v1/kunden/:kundeId/integrationen', kundenIntegrationenRouter);
 app.use('/api/v1/oauth', oauthRouter);
 app.use('/api/v1/test', testRouter);
 app.use('/api/v1/webhooks', webhooksRouter);
+app.use('/api/v1/demo', demoRouter);
 
 // Sentry-Error-Handler vor globaler Fehlerbehandlung (nur wirksam wenn SENTRY_DSN gesetzt)
 Sentry.setupExpressErrorHandler(app);

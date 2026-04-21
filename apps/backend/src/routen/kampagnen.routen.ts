@@ -86,6 +86,7 @@ const kampagneAktualisierenSchema = z.object({
   vapiVoicemailNachricht: z.string().optional().nullable(),
   maxAnrufVersuche: z.number().int().min(1).max(20).optional(),
   anrufZeitslots: z.array(z.object({ stunde: z.number(), minute: z.number() })).optional(),
+  istDemoVerfuegbar: z.boolean().optional(),
   emailAktiviert: z.boolean().optional(),
   whatsappAktiviert: z.boolean().optional(),
   benachrichtigungEmail: z.union([z.string().email(), z.literal(''), z.null()]).optional(),

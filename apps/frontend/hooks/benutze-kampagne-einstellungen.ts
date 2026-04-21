@@ -11,6 +11,7 @@ interface KampagneEinstellungen {
   vapiPhoneNumberId?: string | null;
   vapiPrompt?: string | null;
   maxAnrufVersuche?: number;
+  istDemoVerfuegbar?: boolean;
   emailAktiviert?: boolean;
   emailTemplateVerpasst?: string | null;
   emailTemplateVoicemail?: string | null;
