@@ -46,15 +46,28 @@ export function benutzeBenutzerAktualisieren() {
   });
 }
 
+export interface EinladungsAntwort extends Benutzer {
+  einladungsLink: string;
+}
+
 export function benutzeBenutzerEinladen() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (daten: { email: string; vorname: string; nachname: string; kundeId: string }) => {
       const { data } = await apiClient.post('/benutzer/einladen', daten);
-      return data.daten as Benutzer;
+      return data.daten as EinladungsAntwort;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['benutzer'] });
+    },
+  });
+}
+
+export function benutzeBenutzerEinladungNeuSenden() {
+  return useMutation({
+    mutationFn: async (benutzerId: string) => {
+      const { data } = await apiClient.post(`/benutzer/${benutzerId}/einladung-neu-senden`);
+      return data.daten as { einladungsLink: string };
     },
   });
 }

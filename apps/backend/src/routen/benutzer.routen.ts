@@ -20,6 +20,8 @@ benutzerRouter.get('/', nurAdmin, async (_req: Request, res: Response, next: Nex
         nachname: true,
         rolle: true,
         aktiv: true,
+        kundeId: true,
+        kunde: { select: { id: true, name: true } },
         letzterLogin: true,
         erstelltAm: true,
       },
@@ -217,15 +219,86 @@ benutzerRouter.post('/einladen', nurAdmin, async (req: Request, res: Response, n
       },
     });
 
-    const { einladungErstellen, emailEinladungSenden } = await import('../dienste/benutzer-einladung.dienst');
+    const { einladungErstellen, einladungsLinkBauen, emailEinladungSenden } = await import('../dienste/benutzer-einladung.dienst');
     const { klartextToken } = await einladungErstellen(benutzer.id);
-    await emailEinladungSenden(
-      { email: benutzer.email, vorname: benutzer.vorname, nachname: benutzer.nachname },
-      klartextToken,
-      kunde.name,
-    );
+    const einladungsLink = einladungsLinkBauen(klartextToken);
 
-    res.status(201).json({ erfolg: true, daten: benutzer });
+    try {
+      await emailEinladungSenden(
+        { email: benutzer.email, vorname: benutzer.vorname, nachname: benutzer.nachname },
+        klartextToken,
+        kunde.name,
+      );
+    } catch (mailFehler) {
+      // Mail-Versand gescheitert → Zombie-Records entfernen, damit erneuter
+      // Einladungs-Versuch mit derselben E-Mail moeglich ist.
+      await prisma.benutzerEinladung.deleteMany({ where: { benutzerId: benutzer.id } });
+      await prisma.benutzer.delete({ where: { id: benutzer.id } });
+      const nachricht = mailFehler instanceof Error ? mailFehler.message : 'Unbekannter Fehler';
+      throw new AppFehler(
+        `E-Mail-Versand fehlgeschlagen: ${nachricht}`,
+        500,
+        'EMAIL_VERSAND_FEHLGESCHLAGEN',
+      );
+    }
+
+    res.status(201).json({ erfolg: true, daten: { ...benutzer, einladungsLink } });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// POST /api/v1/benutzer/:id/einladung-neu-senden (nur Admin)
+// Erzeugt einen neuen Einladungs-Token (alter wird verworfen) und sendet die
+// Einladungs-E-Mail erneut. Nur fuer Kunden-Rolle, die noch nicht aktiv ist.
+benutzerRouter.post('/:id/einladung-neu-senden', nurAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const benutzer = await prisma.benutzer.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        email: true,
+        vorname: true,
+        nachname: true,
+        rolle: true,
+        aktiv: true,
+        kundeId: true,
+        kunde: { select: { name: true } },
+      },
+    });
+
+    if (!benutzer) {
+      throw new AppFehler('Benutzer nicht gefunden', 404, 'NICHT_GEFUNDEN');
+    }
+    if (benutzer.rolle !== 'kunde') {
+      throw new AppFehler('Einladungen sind nur fuer Kunden-Benutzer vorgesehen', 400, 'FALSCHE_ROLLE');
+    }
+    if (benutzer.aktiv) {
+      throw new AppFehler('Dieser Benutzer hat seinen Zugang bereits aktiviert', 400, 'BEREITS_AKTIV');
+    }
+
+    const { einladungErstellen, einladungsLinkBauen, emailEinladungSenden } = await import('../dienste/benutzer-einladung.dienst');
+    const { klartextToken } = await einladungErstellen(benutzer.id);
+    const einladungsLink = einladungsLinkBauen(klartextToken);
+
+    try {
+      await emailEinladungSenden(
+        { email: benutzer.email, vorname: benutzer.vorname, nachname: benutzer.nachname },
+        klartextToken,
+        benutzer.kunde?.name || null,
+      );
+    } catch (mailFehler) {
+      // Beim Erneuern lassen wir User und Einladung stehen (User existiert ja schon
+      // laenger), geben aber die Fehlermeldung zurueck.
+      const nachricht = mailFehler instanceof Error ? mailFehler.message : 'Unbekannter Fehler';
+      throw new AppFehler(
+        `E-Mail-Versand fehlgeschlagen: ${nachricht}`,
+        500,
+        'EMAIL_VERSAND_FEHLGESCHLAGEN',
+      );
+    }
+
+    res.json({ erfolg: true, daten: { einladungsLink } });
   } catch (fehler) {
     next(fehler);
   }

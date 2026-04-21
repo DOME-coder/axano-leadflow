@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { prisma } from '../datenbank/prisma.client';
 import { emailSenden } from './email.dienst';
+import { integrationKonfigurationLesenMitFallback } from './integrationen.dienst';
 import { logger } from '../hilfsfunktionen/logger';
 
 /**
@@ -134,13 +135,26 @@ export async function einladungEinloesen(
 /**
  * Versendet die Einladungs-E-Mail mit dem Klartext-Token als Link.
  */
+export function einladungsLinkBauen(klartextToken: string): string {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  return `${frontendUrl}/einladung/${klartextToken}`;
+}
+
 export async function emailEinladungSenden(
   empfaenger: { email: string; vorname: string; nachname: string },
   klartextToken: string,
   kundeName: string | null,
 ): Promise<void> {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-  const einladungsLink = `${frontendUrl}/einladung/${klartextToken}`;
+  // Strikter SMTP-Check: Einladungen duerfen nicht stumm scheitern, sonst
+  // landen Benutzer in der DB ohne dass jemand jemals ihren Link bekommt.
+  const smtp = await integrationKonfigurationLesenMitFallback('smtp');
+  if (!smtp?.host && !process.env.SMTP_HOST) {
+    throw new Error(
+      'Kein globales SMTP konfiguriert. Bitte unter /einstellungen/integrationen → SMTP einrichten und aktivieren.',
+    );
+  }
+
+  const einladungsLink = einladungsLinkBauen(klartextToken);
   const anrede = empfaenger.vorname ? `Hallo ${empfaenger.vorname}` : 'Hallo';
   const firmaZeile = kundeName ? `fuer <strong>${kundeName}</strong>` : '';
 

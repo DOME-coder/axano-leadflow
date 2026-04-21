@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, UserPlus, X } from 'lucide-react';
+import { Copy, Mail, Plus, RefreshCw, UserPlus, X } from 'lucide-react';
 import {
   benutzeBenutzer,
   benutzeBenutzerAktualisieren,
   benutzeBenutzerEinladen,
+  benutzeBenutzerEinladungNeuSenden,
   benutzeBenutzerErstellen,
 } from '@/hooks/benutze-benutzer';
 import { benutzeKunden } from '@/hooks/benutze-kunden';
@@ -18,6 +19,7 @@ export default function BenutzerSeite() {
   const { data: kunden } = benutzeKunden();
   const erstellen = benutzeBenutzerErstellen();
   const einladen = benutzeBenutzerEinladen();
+  const neuSenden = benutzeBenutzerEinladungNeuSenden();
   const aktualisieren = benutzeBenutzerAktualisieren();
   const { toastAnzeigen } = useToastStore();
 
@@ -29,8 +31,29 @@ export default function BenutzerSeite() {
   const [rolle, setRolle] = useState<Rolle>('mitarbeiter');
   const [kundeId, setKundeId] = useState('');
   const [fehler, setFehler] = useState('');
+  const [erfolgsLink, setErfolgsLink] = useState<{ email: string; link: string } | null>(null);
 
   const istKundenRolle = rolle === 'kunde';
+
+  const linkKopieren = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toastAnzeigen('erfolg', 'Einladungs-Link kopiert');
+    } catch {
+      toastAnzeigen('fehler', 'Kopieren fehlgeschlagen');
+    }
+  };
+
+  const einladungErneutSenden = async (benutzerId: string, benutzerEmail: string) => {
+    try {
+      const antwort = await neuSenden.mutateAsync(benutzerId);
+      toastAnzeigen('erfolg', 'Einladung erneut versendet');
+      setErfolgsLink({ email: benutzerEmail, link: antwort.einladungsLink });
+    } catch (f: unknown) {
+      const nachricht = (f as { response?: { data?: { fehler?: string } } })?.response?.data?.fehler;
+      toastAnzeigen('fehler', nachricht || 'Erneutes Senden fehlgeschlagen');
+    }
+  };
 
   const zuruecksetzen = () => {
     setVorname('');
@@ -56,8 +79,9 @@ export default function BenutzerSeite() {
         return;
       }
       try {
-        await einladen.mutateAsync({ vorname, nachname, email, kundeId });
+        const antwort = await einladen.mutateAsync({ vorname, nachname, email, kundeId });
         toastAnzeigen('erfolg', 'Einladung per E-Mail versendet');
+        setErfolgsLink({ email, link: antwort.einladungsLink });
         setModalOffen(false);
         zuruecksetzen();
       } catch (f: unknown) {
@@ -107,6 +131,36 @@ export default function BenutzerSeite() {
         </button>
       </div>
 
+      {erfolgsLink && (
+        <div className="mb-5 ax-karte border-l-4 border-axano-orange rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-axano-orange/10 flex items-center justify-center flex-shrink-0">
+              <Mail className="w-4 h-4 text-axano-orange" strokeWidth={2.2} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold ax-titel">Einladung an {erfolgsLink.email} versendet</p>
+              <p className="text-xs ax-text-sekundaer mt-1">
+                Falls die E-Mail nicht ankommt (Spam-Filter, falsche Adresse), kannst du den Link unten kopieren
+                und dem Kunden manuell per Chat/WhatsApp zusenden. Der Link ist 7 Tage gueltig.
+              </p>
+              <div className="flex items-center gap-2 mt-3">
+                <code className="flex-1 text-xs ax-karte-erhoeht ax-text px-3 py-2 rounded-lg truncate">{erfolgsLink.link}</code>
+                <button
+                  onClick={() => linkKopieren(erfolgsLink.link)}
+                  className="flex items-center gap-1 text-xs bg-axano-orange hover:bg-orange-600 text-white px-3 py-2 rounded-lg transition-all"
+                >
+                  <Copy className="w-3 h-3" strokeWidth={2.2} />
+                  Kopieren
+                </button>
+              </div>
+            </div>
+            <button onClick={() => setErfolgsLink(null)} className="p-1 ax-text-tertiaer hover:ax-text">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-16 rounded-xl" />)}</div>
       ) : (
@@ -143,21 +197,34 @@ export default function BenutzerSeite() {
                     </span>
                   </td>
                   <td className="px-5 py-3 text-right">
-                    {b.aktiv ? (
-                      <button
-                        onClick={() => aktualisieren.mutate({ id: b.id, aktiv: false })}
-                        className="text-xs text-red-500 hover:text-red-700 font-medium"
-                      >
-                        Deaktivieren
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => aktualisieren.mutate({ id: b.id, aktiv: true })}
-                        className="text-xs text-green-500 hover:text-green-700 font-medium"
-                      >
-                        Aktivieren
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3 justify-end">
+                      {b.rolle === 'kunde' && !b.aktiv && (
+                        <button
+                          onClick={() => einladungErneutSenden(b.id, b.email)}
+                          disabled={neuSenden.isPending}
+                          className="text-xs text-axano-orange hover:text-orange-700 font-medium flex items-center gap-1 disabled:opacity-50"
+                          title="Neuen Einladungs-Token generieren und E-Mail erneut senden"
+                        >
+                          <RefreshCw className="w-3 h-3" strokeWidth={2.2} />
+                          Einladung erneut senden
+                        </button>
+                      )}
+                      {b.aktiv ? (
+                        <button
+                          onClick={() => aktualisieren.mutate({ id: b.id, aktiv: false })}
+                          className="text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                          Deaktivieren
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => aktualisieren.mutate({ id: b.id, aktiv: true })}
+                          className="text-xs text-green-500 hover:text-green-700 font-medium"
+                        >
+                          Aktivieren
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
