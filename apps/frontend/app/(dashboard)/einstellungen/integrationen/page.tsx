@@ -85,7 +85,7 @@ export default function IntegrationenSeite() {
   if (isLoading) {
     return (
       <div className="animate-einblenden">
-        <h1 className="text-2xl font-bold ax-titel mb-6">Integrationen</h1>
+        <h1 className="text-2xl font-bold ax-titel mb-6">Axano-System-Konfiguration</h1>
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="skeleton h-20 rounded-xl" />
@@ -98,15 +98,16 @@ export default function IntegrationenSeite() {
   return (
     <div className="animate-einblenden">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold ax-titel">KI-Konfiguration</h1>
+        <h1 className="text-2xl font-bold ax-titel">Axano-System-Konfiguration</h1>
         <p className="text-sm ax-text-sekundaer mt-1">
-          API-Keys für die interne KI-Verarbeitung (Prompt-Generierung und Transkript-Analyse).
-          Alle anderen Integrationen (VAPI, E-Mail, WhatsApp, Kalender) werden pro Kunde konfiguriert.
+          Globale Dienste, die Axano selbst betreibt: KI-Verarbeitung (Claude) und Versand von System-E-Mails
+          (z. B. Kunden-Einladungen). Alle anderen Integrationen (VAPI, Facebook, WhatsApp, Kalender)
+          werden pro Kunde konfiguriert.
         </p>
       </div>
 
       <div className="space-y-3">
-        {integrationen?.filter((i) => ['anthropic'].includes(i.name)).map((integration) => (
+        {integrationen?.filter((i) => ['anthropic', 'smtp'].includes(i.name)).map((integration) => (
           <div
             key={integration.name}
             className="ax-karte rounded-xl overflow-hidden"
