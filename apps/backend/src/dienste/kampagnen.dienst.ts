@@ -260,6 +260,7 @@ export async function kampagneAktualisieren(
     vapiPrompt?: string | null;
     maxAnrufVersuche?: number;
     anrufZeitslots?: Prisma.InputJsonValue;
+    istDemoVerfuegbar?: boolean;
     emailAktiviert?: boolean;
     whatsappAktiviert?: boolean;
     benachrichtigungEmail?: string | null;
@@ -304,6 +305,7 @@ export async function kampagneAktualisieren(
   if (daten.vapiPrompt !== undefined) updateData.vapiPrompt = daten.vapiPrompt;
   if (daten.maxAnrufVersuche !== undefined) updateData.maxAnrufVersuche = daten.maxAnrufVersuche;
   if (daten.anrufZeitslots !== undefined) updateData.anrufZeitslots = daten.anrufZeitslots;
+  if (daten.istDemoVerfuegbar !== undefined) updateData.istDemoVerfuegbar = daten.istDemoVerfuegbar;
   if (daten.emailAktiviert !== undefined) updateData.emailAktiviert = daten.emailAktiviert;
   if (daten.whatsappAktiviert !== undefined) updateData.whatsappAktiviert = daten.whatsappAktiviert;
   if (daten.benachrichtigungEmail !== undefined) updateData.benachrichtigungEmail = daten.benachrichtigungEmail || null;
