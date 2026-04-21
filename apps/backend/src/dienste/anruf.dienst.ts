@@ -220,7 +220,10 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
 
   const kampagne = await prisma.kampagne.findUnique({
     where: { id: versuch.kampagneId },
-    include: { kunde: { select: { name: true } } },
+    include: {
+      kunde: { select: { name: true } },
+      felder: { orderBy: { reihenfolge: 'asc' } },
+    },
   });
   if (!kampagne) return;
 
@@ -289,6 +292,54 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       ...leadFelddaten.map((f) => `- ${f.feld.bezeichnung}: ${f.wert || '—'}`),
     ].join('\n');
 
+    // Automatisch ermitteln welche Infos der Lead noch NICHT angegeben hat.
+    // Diese werden als "zu erfassen" in einem eigenen Block gelistet,
+    // damit die KI weiss, wonach sie im Gespraech fragen muss.
+    const felddatenMap = new Map(leadFelddaten.map((f) => [f.feldId, f.wert]));
+    const nameFehlt = !lead.vorname && !lead.nachname;
+    const nurVornameFehlt = !lead.vorname && !!lead.nachname;
+    const nurNachnameFehlt = !!lead.vorname && !lead.nachname;
+    const emailFehlt = !lead.email;
+
+    const zuErfassenZeilen: string[] = [];
+    if (nameFehlt) {
+      zuErfassenZeilen.push('- **Vollstaendiger Name** — frag genau so: "Wie lautet Ihr vollstaendiger Name?" (NIEMALS getrennt nach Vor- und Nachname fragen).');
+    } else if (nurVornameFehlt) {
+      zuErfassenZeilen.push('- **Vorname** — frag natuerlich danach.');
+    } else if (nurNachnameFehlt) {
+      zuErfassenZeilen.push('- **Nachname** — frag natuerlich danach.');
+    }
+    if (emailFehlt) {
+      zuErfassenZeilen.push('- **E-Mail-Adresse** — frag danach und wiederhole sie zur Bestaetigung.');
+    }
+    // Kampagnen-Felder die leer sind
+    const kampagnenFelder = ((kampagne as { felder?: Array<{ id: string; bezeichnung: string; feldtyp: string; pflichtfeld: boolean }> }).felder) || [];
+    for (const feld of kampagnenFelder) {
+      const wert = felddatenMap.get(feld.id);
+      if (wert && wert.trim().length > 0) continue; // bereits vorhanden
+      let hinweis = '';
+      if (feld.feldtyp === 'ja_nein') hinweis = ' (Ja/Nein-Antwort)';
+      else if (feld.feldtyp === 'datum') hinweis = ' (Datum — lass dir Tag, Monat, Jahr nennen)';
+      else if (feld.feldtyp === 'zahl') hinweis = ' (Zahl)';
+      else if (feld.feldtyp === 'auswahl') hinweis = ' (eine passende Option auswaehlen)';
+      const pflichtIcon = feld.pflichtfeld ? ' [Pflicht]' : '';
+      // Sonderformulierung fuer Wohnort/Stadt-Felder
+      const bezeichnungLower = feld.bezeichnung.toLowerCase();
+      if (bezeichnungLower === 'ort' || bezeichnungLower === 'wohnort' || bezeichnungLower === 'stadt') {
+        zuErfassenZeilen.push(`- **${feld.bezeichnung}**${pflichtIcon} — frag: "Wo wohnen Sie?" (NICHT "Ihr Wohnort ist…?").`);
+      } else {
+        zuErfassenZeilen.push(`- **${feld.bezeichnung}**${pflichtIcon}${hinweis}`);
+      }
+    }
+
+    const erfassungsBlock = zuErfassenZeilen.length > 0
+      ? `\n\n# ZU ERFASSENDE ANGABEN (in natuerlicher Reihenfolge im Gespraech)
+
+Frag im Laufe des Gespraechs nach den folgenden Informationen. Stelle die Fragen natuerlich und nicht wie ein Formular. Wiederhole bei der E-Mail zur Bestaetigung. Notiere dir die Antworten fuer den spaeteren Termin.
+
+${zuErfassenZeilen.join('\n')}`
+      : '';
+
     // Agent-Name + Firmenname konsistent erzwingen
     const kundenFirmenname = (kampagne as { kunde?: { name: string } | null }).kunde?.name;
     let nameBlock = '';
@@ -316,16 +367,21 @@ ${datumsKontextErstellen()}
 
 # LEAD-DATEN (diese Daten hat der Lead bei der Anmeldung angegeben)
 
-${leadDatenBlock}
+${leadDatenBlock}${erfassungsBlock}
 
-WICHTIG zur E-Mail-Adresse:
+# E-MAIL-ADRESSE VORLESEN
+
 ${lead.email ? `Die E-Mail des Leads ist: ${lead.email}
-Du MUSST diese E-Mail im Gespraech vorlesen und vom Lead bestaetigen lassen.
-Lies die E-Mail BUCHSTABE FUER BUCHSTABE vor:
-- @ = "aett"
-- . = "Punkt"
-- Laendercodes einzeln buchstabieren ("d e" fuer .de)
-- Langsam und deutlich, warte auf Bestaetigung` : 'Keine E-Mail-Adresse vorhanden.'}`;
+Lies die E-Mail EINMAL natuerlich und langsam vor — wie ein Mensch es tun wuerde, nicht buchstabiert.
+- Das "@"-Zeichen sprichst du natuerlich als "at" aus (nicht "aett").
+- Den Punkt sprichst du als "Punkt" aus.
+- Laendercodes nennst du als ein Wort (".de" = "Punkt de", ".com" = "Punkt com").
+Danach fragst du einmal zur Bestaetigung: "Ist das korrekt?"
+Wenn der Lead unsicher ist, liest du die Adresse ein zweites Mal etwas deutlicher — immer noch natuerlich, nicht Buchstabe fuer Buchstabe.` : 'Der Lead hat noch keine E-Mail angegeben — frag im Gespraech natuerlich danach und wiederhole sie zur Bestaetigung.'}
+
+# FAQ-ANTWORTEN (IMMER KONSISTENT BEANTWORTEN)
+
+- **Wie lange dauert der Termin?** Antworte: "Zwischen fuenfzehn und dreissig Minuten."`;
 
     const vapiPromptMessage = {
       role: 'system',
