@@ -53,6 +53,20 @@ demoRouter.get('/:kampagneSlug', async (req: Request, res: Response, next: NextF
         vapiAktiviert: true,
         kiName: true,
         kunde: { select: { name: true } },
+        felder: {
+          orderBy: { reihenfolge: 'asc' },
+          select: {
+            id: true,
+            feldname: true,
+            bezeichnung: true,
+            feldtyp: true,
+            pflichtfeld: true,
+            optionen: true,
+            reihenfolge: true,
+            platzhalter: true,
+            hilfetext: true,
+          },
+        },
       },
     });
 
@@ -67,6 +81,7 @@ demoRouter.get('/:kampagneSlug', async (req: Request, res: Response, next: NextF
         beschreibung: kampagne.beschreibung,
         kiName: kampagne.kiName,
         kundeName: kampagne.kunde?.name || null,
+        felder: kampagne.felder,
       },
     });
   } catch (fehler) {
@@ -79,8 +94,10 @@ demoRouter.get('/:kampagneSlug', async (req: Request, res: Response, next: NextF
 // ──────────────────────────────────────────────────────────
 const anrufenSchema = z.object({
   vorname: z.string().min(1, 'Vorname ist erforderlich').max(100),
-  nachname: z.string().max(100).optional(),
+  nachname: z.string().min(1, 'Nachname ist erforderlich').max(100),
+  email: z.string().email('Ungueltige E-Mail-Adresse').max(200),
   telefon: z.string().min(5).max(30),
+  felddaten: z.record(z.string()).optional(), // { feldname: wert }
   _hp: z.string().optional(), // Honeypot
 });
 
@@ -123,7 +140,7 @@ demoRouter.post('/:kampagneSlug/anrufen', async (req: Request, res: Response, ne
       );
     }
 
-    // Kampagne laden + pruefen
+    // Kampagne laden + pruefen (inkl. Felder, damit wir felddaten mappen koennen)
     const kampagne = await prisma.kampagne.findUnique({
       where: { webhookSlug: kampagneSlug },
       select: {
@@ -134,6 +151,7 @@ demoRouter.post('/:kampagneSlug/anrufen', async (req: Request, res: Response, ne
         vapiAssistantId: true,
         vapiPhoneNumberId: true,
         kundeId: true,
+        felder: { select: { id: true, feldname: true, pflichtfeld: true } },
       },
     });
 
@@ -156,17 +174,44 @@ demoRouter.post('/:kampagneSlug/anrufen', async (req: Request, res: Response, ne
       );
     }
 
-    // Lead direkt anlegen (kein Duplikat-Check — jeder Demo-Klick = neuer Lead)
-    const lead = await prisma.lead.create({
-      data: {
-        kampagneId: kampagne.id,
-        vorname: daten.vorname,
-        nachname: daten.nachname,
-        telefon,
-        quelle: 'demo',
-        status: 'Neu',
-        rohdaten: { demo: true, ip, userAgent: req.headers['user-agent'] || '' } as object,
-      },
+    // Felddaten-Eintraege vorbereiten (nur bekannte Felder der Kampagne)
+    const felddatenEintraegeProto: Array<{ feldId: string; wert: string }> = [];
+    if (daten.felddaten) {
+      for (const [feldname, wert] of Object.entries(daten.felddaten)) {
+        if (!wert || !wert.trim()) continue;
+        const feld = kampagne.felder.find((f) => f.feldname === feldname);
+        if (feld) {
+          felddatenEintraegeProto.push({ feldId: feld.id, wert: wert.trim() });
+        }
+      }
+    }
+
+    // Lead + Felddaten in einer Transaktion anlegen
+    const lead = await prisma.$transaction(async (tx) => {
+      const neuerLead = await tx.lead.create({
+        data: {
+          kampagneId: kampagne.id,
+          vorname: daten.vorname,
+          nachname: daten.nachname,
+          email: daten.email,
+          telefon,
+          quelle: 'demo',
+          status: 'Neu',
+          rohdaten: { demo: true, ip, userAgent: req.headers['user-agent'] || '' } as object,
+        },
+      });
+
+      if (felddatenEintraegeProto.length > 0) {
+        await tx.leadFelddatum.createMany({
+          data: felddatenEintraegeProto.map((e) => ({
+            leadId: neuerLead.id,
+            feldId: e.feldId,
+            wert: e.wert,
+          })),
+        });
+      }
+
+      return neuerLead;
     });
 
     // Sofortigen Anruf planen (5 Sek Delay ueber BullMQ)

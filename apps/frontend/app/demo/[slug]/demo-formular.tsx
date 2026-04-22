@@ -3,13 +3,32 @@
 import { useState, useEffect } from 'react';
 import { Phone, PhoneCall } from 'lucide-react';
 
+export interface KampagnenFeldMeta {
+  id: string;
+  feldname: string;
+  bezeichnung: string;
+  feldtyp: 'text' | 'zahl' | 'email' | 'telefon' | 'datum' | 'auswahl' | 'ja_nein' | 'mehrzeilig';
+  pflichtfeld: boolean;
+  optionen: unknown; // JSON: string[] bei feldtyp='auswahl'
+  reihenfolge: number;
+  platzhalter: string | null;
+  hilfetext: string | null;
+}
+
 type Zustand = 'eingabe' | 'sendet' | 'wartet' | 'timeout' | 'fehler';
 
-export function DemoFormular({ slug }: { slug: string }) {
+interface Props {
+  slug: string;
+  felder: KampagnenFeldMeta[];
+}
+
+export function DemoFormular({ slug, felder }: Props) {
   const [zustand, setZustand] = useState<Zustand>('eingabe');
   const [vorname, setVorname] = useState('');
   const [nachname, setNachname] = useState('');
+  const [email, setEmail] = useState('');
   const [telefon, setTelefon] = useState('+49 ');
+  const [felddaten, setFelddaten] = useState<Record<string, string>>({});
   const [honeypot, setHoneypot] = useState('');
   const [fehler, setFehler] = useState('');
 
@@ -20,16 +39,33 @@ export function DemoFormular({ slug }: { slug: string }) {
     return () => clearTimeout(t);
   }, [zustand]);
 
+  const feldAendern = (feldname: string, wert: string) => {
+    setFelddaten((prev) => ({ ...prev, [feldname]: wert }));
+  };
+
   const absenden = async (e: React.FormEvent) => {
     e.preventDefault();
     setFehler('');
 
-    if (!vorname.trim()) {
-      setFehler('Bitte gib deinen Vornamen ein');
+    if (!vorname.trim() || !nachname.trim()) {
+      setFehler('Bitte gib Vor- und Nachnamen ein');
+      return;
+    }
+    if (!email.trim() || !email.includes('@')) {
+      setFehler('Bitte gib eine gueltige E-Mail-Adresse ein');
       return;
     }
     if (telefon.replace(/\D/g, '').length < 8) {
       setFehler('Bitte gib eine gueltige Telefonnummer ein');
+      return;
+    }
+
+    // Pflichtfelder pruefen
+    const fehlendeListe = felder
+      .filter((f) => f.pflichtfeld && !(felddaten[f.feldname] || '').trim())
+      .map((f) => f.bezeichnung);
+    if (fehlendeListe.length > 0) {
+      setFehler(`Bitte fuelle alle Pflichtfelder aus: ${fehlendeListe.join(', ')}`);
       return;
     }
 
@@ -42,8 +78,10 @@ export function DemoFormular({ slug }: { slug: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           vorname: vorname.trim(),
-          nachname: nachname.trim() || undefined,
+          nachname: nachname.trim(),
+          email: email.trim(),
           telefon: telefon.trim(),
+          felddaten,
           _hp: honeypot || undefined,
         }),
       });
@@ -117,6 +155,7 @@ export function DemoFormular({ slug }: { slug: string }) {
         </div>
       )}
 
+      {/* Standardfelder */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="text-sm font-medium ax-text">Vorname</label>
@@ -131,7 +170,7 @@ export function DemoFormular({ slug }: { slug: string }) {
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium ax-text">Nachname <span className="ax-text-tertiaer font-normal">(optional)</span></label>
+          <label className="text-sm font-medium ax-text">Nachname</label>
           <input
             type="text"
             value={nachname}
@@ -139,8 +178,22 @@ export function DemoFormular({ slug }: { slug: string }) {
             className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
             placeholder="Mustermann"
             autoComplete="family-name"
+            required
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium ax-text">E-Mail-Adresse</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
+          placeholder="max@example.de"
+          autoComplete="email"
+          required
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -156,7 +209,28 @@ export function DemoFormular({ slug }: { slug: string }) {
         />
       </div>
 
-      {/* Honeypot: fuer Bots sichtbar, fuer Menschen versteckt */}
+      {/* Kampagnen-Felder (dynamisch) */}
+      {felder.length > 0 && (
+        <div className="pt-4 mt-2 border-t ax-rahmen-leicht space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold ax-titel">Zusaetzliche Angaben</h3>
+            <p className="text-xs ax-text-sekundaer mt-0.5">
+              Die KI wird dir diese Angaben im Anruf bestaetigen. Fuelle sie so aus, wie es fuer einen echten Lead passen wuerde.
+            </p>
+          </div>
+
+          {felder.map((feld) => (
+            <FeldRenderer
+              key={feld.id}
+              feld={feld}
+              wert={felddaten[feld.feldname] || ''}
+              onAendern={(w) => feldAendern(feld.feldname, w)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Honeypot */}
       <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px' }}>
         <label>
           Bitte nicht ausfuellen
@@ -194,4 +268,176 @@ export function DemoFormular({ slug }: { slug: string }) {
       </p>
     </form>
   );
+}
+
+function FeldRenderer({
+  feld,
+  wert,
+  onAendern,
+}: {
+  feld: KampagnenFeldMeta;
+  wert: string;
+  onAendern: (wert: string) => void;
+}) {
+  const label = (
+    <label className="text-sm font-medium ax-text">
+      {feld.bezeichnung}
+      {!feld.pflichtfeld && <span className="ax-text-tertiaer font-normal"> (optional)</span>}
+    </label>
+  );
+
+  const hilfe = feld.hilfetext ? (
+    <p className="text-xs ax-text-tertiaer mt-1">{feld.hilfetext}</p>
+  ) : null;
+
+  const basisKlasse = 'w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe';
+
+  switch (feld.feldtyp) {
+    case 'mehrzeilig':
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <textarea
+            value={wert}
+            onChange={(e) => onAendern(e.target.value)}
+            className={`${basisKlasse} min-h-[80px]`}
+            placeholder={feld.platzhalter || ''}
+            required={feld.pflichtfeld}
+          />
+          {hilfe}
+        </div>
+      );
+
+    case 'ja_nein':
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <div className="flex gap-3">
+            {['Ja', 'Nein'].map((opt) => (
+              <label
+                key={opt}
+                className={`flex-1 cursor-pointer px-3 py-2.5 text-sm rounded-lg border transition-all text-center ${
+                  wert === opt
+                    ? 'bg-axano-orange/10 border-axano-orange text-axano-orange font-semibold'
+                    : 'ax-rahmen-leicht ax-text ax-hover'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={feld.feldname}
+                  value={opt}
+                  checked={wert === opt}
+                  onChange={(e) => onAendern(e.target.value)}
+                  required={feld.pflichtfeld}
+                  className="sr-only"
+                />
+                {opt}
+              </label>
+            ))}
+          </div>
+          {hilfe}
+        </div>
+      );
+
+    case 'auswahl': {
+      const optionen = Array.isArray(feld.optionen) ? (feld.optionen as string[]) : [];
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <select
+            value={wert}
+            onChange={(e) => onAendern(e.target.value)}
+            className={basisKlasse}
+            required={feld.pflichtfeld}
+          >
+            <option value="">— Bitte waehlen —</option>
+            {optionen.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+          {hilfe}
+        </div>
+      );
+    }
+
+    case 'datum':
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <input
+            type="date"
+            value={wert}
+            onChange={(e) => onAendern(e.target.value)}
+            className={basisKlasse}
+            required={feld.pflichtfeld}
+          />
+          {hilfe}
+        </div>
+      );
+
+    case 'zahl':
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <input
+            type="number"
+            value={wert}
+            onChange={(e) => onAendern(e.target.value)}
+            className={basisKlasse}
+            placeholder={feld.platzhalter || ''}
+            required={feld.pflichtfeld}
+          />
+          {hilfe}
+        </div>
+      );
+
+    case 'email':
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <input
+            type="email"
+            value={wert}
+            onChange={(e) => onAendern(e.target.value)}
+            className={basisKlasse}
+            placeholder={feld.platzhalter || ''}
+            required={feld.pflichtfeld}
+          />
+          {hilfe}
+        </div>
+      );
+
+    case 'telefon':
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <input
+            type="tel"
+            value={wert}
+            onChange={(e) => onAendern(e.target.value)}
+            className={basisKlasse}
+            placeholder={feld.platzhalter || ''}
+            required={feld.pflichtfeld}
+          />
+          {hilfe}
+        </div>
+      );
+
+    case 'text':
+    default:
+      return (
+        <div className="space-y-1.5">
+          {label}
+          <input
+            type="text"
+            value={wert}
+            onChange={(e) => onAendern(e.target.value)}
+            className={basisKlasse}
+            placeholder={feld.platzhalter || ''}
+            required={feld.pflichtfeld}
+          />
+          {hilfe}
+        </div>
+      );
+  }
 }

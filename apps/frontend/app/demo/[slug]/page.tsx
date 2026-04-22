@@ -1,11 +1,12 @@
 import { notFound } from 'next/navigation';
-import { DemoFormular } from './demo-formular';
+import { DemoFormular, type KampagnenFeldMeta } from './demo-formular';
 
 interface DemoMetadaten {
   name: string;
   beschreibung: string | null;
   kiName: string | null;
   kundeName: string | null;
+  felder: KampagnenFeldMeta[];
 }
 
 async function demoLaden(slug: string): Promise<DemoMetadaten | null> {
@@ -50,7 +51,7 @@ export default async function DemoSeite({ params }: { params: { slug: string } }
           {metadaten.kiName && <> Du sprichst mit <strong>{metadaten.kiName}</strong>, der KI dieser Kampagne.</>}
         </div>
 
-        <DemoFormular slug={params.slug} />
+        <DemoFormular slug={params.slug} felder={metadaten.felder} />
       </div>
 
       <p className="text-center text-xs ax-text-tertiaer mt-6">
