@@ -99,6 +99,15 @@ export async function emailSenden(optionen: EmailOptionen): Promise<boolean> {
   const konfig = await smtpKonfigurationLesen(optionen.kundeId);
 
   if (!konfig) {
+    // In Produktion: hart fehlschlagen, damit Aufrufer (z.B. Follow-up-Job) den
+    // Fehler sehen und nicht glauben, die Mail sei raus. In Development: nur loggen,
+    // damit lokale Entwicklung ohne SMTP-Setup moeglich bleibt.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        `E-Mail-Versand an ${optionen.an} fehlgeschlagen: Kein SMTP konfiguriert. ` +
+        `Bitte unter /einstellungen/integrationen → SMTP einrichten oder SMTP_HOST in ENV setzen.`,
+      );
+    }
     logger.info('E-Mail (kein SMTP konfiguriert – nur Log):', {
       an: optionen.an,
       betreff: optionen.betreff,
