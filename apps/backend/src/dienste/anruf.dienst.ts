@@ -10,6 +10,7 @@ import { anrufQueue, followUpQueue } from '../jobs/queue';
 import { anrufPollingStarten } from '../jobs/anruf-polling.job';
 import { zeitfensterAktiv, naechsterZeitfensterbeginn } from '../hilfsfunktionen/zeitfenster';
 import { istHandynummer } from '../hilfsfunktionen/telefon.formatierung';
+import { emailZumVorlesen } from '../hilfsfunktionen/email.aussprache';
 
 interface AnrufZeitslot {
   stunde: number;
@@ -463,12 +464,17 @@ oder zum Abschluss kommen darfst. Ueberspringen eines Punkts gilt als Fehler.${e
 # E-MAIL-ADRESSE VORLESEN
 
 ${lead.email ? `Die E-Mail des Leads ist: ${lead.email}
-Lies die E-Mail EINMAL natuerlich und langsam vor — wie ein Mensch es tun wuerde, nicht buchstabiert.
-- Das "@"-Zeichen sprichst du natuerlich als "at" aus (nicht "aett").
-- Den Punkt sprichst du als "Punkt" aus.
-- Laendercodes nennst du als ein Wort (".de" = "Punkt de", ".com" = "Punkt com").
+
+So sprichst du sie aus — lies diese Form **wortwoertlich** vor, ohne
+irgendetwas zu veraendern, nicht buchstabieren, nicht umformulieren:
+
+  "${emailZumVorlesen(lead.email)}"
+
 Danach fragst du einmal zur Bestaetigung: "Ist das korrekt?"
-Wenn der Lead unsicher ist, liest du die Adresse ein zweites Mal etwas deutlicher — immer noch natuerlich, nicht Buchstabe fuer Buchstabe.` : 'Der Lead hat noch keine E-Mail angegeben — frag im Gespraech natuerlich danach und wiederhole sie zur Bestaetigung.'}
+Wenn der Lead unsicher ist oder eine Korrektur nennt, liest du die Form
+ein zweites Mal langsam und deutlich vor — IMMER genau so wie oben.
+Niemals die Woerter (Aett, Punkt, Bindestrich, Unterstrich, Plus,
+Schraegstrich) weglassen oder durch andere ersetzen.` : 'Der Lead hat noch keine E-Mail angegeben — frag im Gespraech natuerlich danach und wiederhole sie zur Bestaetigung.'}
 
 # FAQ-ANTWORTEN (IMMER KONSISTENT BEANTWORTEN)
 
