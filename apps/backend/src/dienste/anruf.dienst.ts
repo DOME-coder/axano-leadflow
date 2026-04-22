@@ -624,6 +624,7 @@ Schraegstrich) weglassen oder durch andere ersetzen.` : 'Der Lead hat noch keine
         language: 'de',
         provider: 'deepgram',
         smartFormat: true,       // Bessere Erkennung von Zahlen, Datumsangaben, E-Mails
+        endpointing: 180,        // Niedriger Endpointing-Threshold (ms) — reagiert schneller auch bei leisem Sprechen
         keywords: [              // Haeufige Begriffe in Versicherungs-/Lead-Gespraechen
           'Zahnzusatzversicherung:2',
           'Krankenkasse:2',
@@ -631,6 +632,22 @@ Schraegstrich) weglassen oder durch andere ersetzen.` : 'Der Lead hat noch keine
           'Geburtsdatum:2',
           'Postleitzahl:2',
         ],
+      },
+      // Intelligenteres Erkennen wann der Lead mit Sprechen fertig ist
+      startSpeakingPlan: {
+        waitSeconds: 0.5,              // Kurze Wartezeit nach letztem Wort (default 0.4, ausreichend)
+        smartEndpointingEnabled: true, // Deepgrams LLM-basierte Erkennung ob Satz wirklich beendet ist
+        transcriptionEndpointingPlan: {
+          onPunctuationSeconds: 0.1,   // Satzzeichen erkannt → quasi sofort reagieren
+          onNoPunctuationSeconds: 1.2, // Ohne Satzzeichen → kurz warten ob noch was kommt
+          onNumberSeconds: 0.4,        // Bei Zahlen (Geburtsdatum!) kurz warten ob noch mehr Ziffern folgen
+        },
+      },
+      // Stop-Speaking: KI hoert sofort auf wenn Lead rein spricht
+      stopSpeakingPlan: {
+        numWords: 2,          // Erst nach 2 Woertern stoppen (vermeidet Abbruch bei "ähm", "ja")
+        voiceSeconds: 0.2,    // Kurze Toleranz fuer Hintergrundgeraeusche
+        backoffSeconds: 1.0,  // 1 Sek warten bevor KI weiterredet
       },
       // Nur ganze Abschieds-Saetze als End-Call-Trigger — ein einzelnes "Tschuess"
       // im Gespraech darf NICHT mehr versehentlich den Anruf beenden.
