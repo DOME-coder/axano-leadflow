@@ -284,11 +284,13 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
       include: { feld: { select: { bezeichnung: true } } },
     });
 
+    // Name als kombinierte Einheit (vermeidet getrennte Abfrage von Vor-/Nachname).
+    // Telefon bewusst NICHT im Block — der Lead nimmt den Anruf entgegen, die
+    // Nummer ist damit implizit bestaetigt. Die KI braucht sie nicht erneut.
+    const nameKombiniert = [lead.vorname, lead.nachname].filter(Boolean).join(' ') || '—';
     const leadDatenBlock = [
-      `- Vorname: ${lead.vorname || '—'}`,
-      `- Nachname: ${lead.nachname || '—'}`,
+      `- Name: ${nameKombiniert}`,
       `- E-Mail: ${lead.email || '—'}`,
-      `- Telefon: ${lead.telefon || '—'}`,
       ...leadFelddaten.map((f) => `- ${f.feld.bezeichnung}: ${f.wert || '—'}`),
     ].join('\n');
 
@@ -351,8 +353,27 @@ ${zuErfassenZeilen.join('\n')}`
     }
 
     // Alles in EINEN kombinierten Prompt (keine separaten System-Messages)
-    // So beachtet das LLM Lead-Daten, Sprach-Regeln und Name-Anweisung zuverlaessig
-    const kombinierterPrompt = `${kampagne.vapiPrompt || ''}${nameBlock}
+    // So beachtet das LLM Lead-Daten, Sprach-Regeln und Name-Anweisung zuverlaessig.
+    // Der Bestaetigungs-Block steht BEWUSST ganz vorne, damit er bei Konflikten
+    // mit kampagne.vapiPrompt Vorrang hat.
+    const kombinierterPrompt = `# UMGANG MIT LEAD-DATEN (HOECHSTE PRIORITAET — IMMER BEACHTEN)
+
+Alle Angaben im LEAD-DATEN-Block unten (ausser denen mit "—") hat der Lead
+bereits selbst bei der Anmeldung eingetragen. Du kennst sie also schon.
+
+- **Bestaetige** diese Angaben im Gespraech, frage sie NIEMALS erneut ab.
+  Beispiel: "Ich habe hier Ihr Geburtsdatum als fuenfzehnten April neunzehnhundertfuenfundachtzig — stimmt das so?"
+- Gehe die Angaben natuerlich durch, nicht wie eine Checkliste.
+- Nur bei Eintraegen mit "—" (leer) fragst du den Lead neu danach.
+- Wenn der Lead eine Angabe korrigieren moechte, nutze das Tool "leadDatenKorrigieren".
+
+## BESONDERE REGELN
+
+- **NAME:** Falls der Name fehlt oder du ihn neu abfragen musst, frag nach dem VOLLSTAENDIGEN Namen in EINER Frage: "Wie lautet Ihr vollstaendiger Name?" Frag NIEMALS Vor- und Nachname getrennt. Wenn der Name schon bekannt ist, bestaetige ihn als Einheit ("Max Mustermann — richtig?"), nicht als zwei separate Bestaetigungen.
+- **TELEFONNUMMER:** Die Telefonnummer bestaetigst du NIEMALS. Wenn der Lead den Anruf angenommen hat und antwortet, ist die Nummer offensichtlich korrekt.
+- **E-MAIL:** Bestaetige die E-Mail im Gespraech (siehe separaten Block "E-MAIL-ADRESSE VORLESEN" weiter unten).
+
+${kampagne.vapiPrompt || ''}${nameBlock}
 
 # SPRACH-REGELN (IMMER EINHALTEN)
 
@@ -368,16 +389,6 @@ ${datumsKontextErstellen()}
 # LEAD-DATEN (diese Daten hat der Lead bei der Anmeldung angegeben)
 
 ${leadDatenBlock}${erfassungsBlock}
-
-# UMGANG MIT LEAD-DATEN (SEHR WICHTIG)
-
-Alle oben stehenden Angaben (ausser denen mit "—") hat der Lead bereits
-selbst bei der Anmeldung eingetragen. Du kennst sie also schon.
-- **Bestaetige** diese Angaben im Gespraech, frage sie NICHT erneut ab.
-  Beispiel: "Ich habe hier Ihr Geburtsdatum als fuenfzehnten April neunzehnhundertfuenfundachtzig — stimmt das so?"
-- Gehe die Angaben natuerlich und nicht wie eine Checkliste durch.
-- Nur bei Eintraegen mit "—" (leer) fragst du den Lead neu danach.
-- Wenn der Lead eine Angabe korrigieren moechte, nutze das Tool "leadDatenKorrigieren".
 
 # E-MAIL-ADRESSE VORLESEN
 
@@ -527,12 +538,30 @@ Wenn der Lead unsicher ist, liest du die Adresse ein zweites Mal etwas deutliche
       },
       // VAPI Assistant-Konfiguration
       endCallFunctionEnabled: true,
-      silenceTimeoutSeconds: 15, // Schnelleres Erkennen wenn Lead fertig hat (war 30)
-      maxDurationSeconds: 300,
+      silenceTimeoutSeconds: 30, // Mehr Toleranz fuer Denkpausen / Hintergrundrauschen (war 15)
+      maxDurationSeconds: 600,   // 10 Min — Bestaetigungs-Demos mit vielen Feldern brauchen Zeit (war 300)
       backgroundDenoisingEnabled: true,
+      backgroundSound: 'off',    // Kein synthetischer Hintergrund, maximale Verstaendlichkeit
       voicemailDetection: { provider: 'twilio' },
-      transcriber: { model: 'nova-3', language: 'de', provider: 'deepgram' },
-      endCallPhrases: ['Auf Wiederhören.', 'Schönen Tag noch.', 'Tschüss.'],
+      transcriber: {
+        model: 'nova-3',
+        language: 'de',
+        provider: 'deepgram',
+        smartFormat: true,       // Bessere Erkennung von Zahlen, Datumsangaben, E-Mails
+        keywords: [              // Haeufige Begriffe in Versicherungs-/Lead-Gespraechen
+          'Zahnzusatzversicherung:2',
+          'Krankenkasse:2',
+          'Termin:2',
+          'Geburtsdatum:2',
+          'Postleitzahl:2',
+        ],
+      },
+      // Nur ganze Abschieds-Saetze als End-Call-Trigger — ein einzelnes "Tschuess"
+      // im Gespraech darf NICHT mehr versehentlich den Anruf beenden.
+      endCallPhrases: [
+        'Auf Wiederhören, einen schönen Tag noch.',
+        'Auf Wiederhören und danke für Ihre Zeit.',
+      ],
       ...(kampagne.vapiVoicemailNachricht ? { voicemailMessage: kampagne.vapiVoicemailNachricht } : {}),
     };
 
