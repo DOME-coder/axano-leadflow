@@ -259,3 +259,107 @@ kampagnenRouter.post('/:id/duplizieren', async (req: Request, res: Response, nex
     next(fehler);
   }
 });
+
+// ──────────────────────────────────────────────
+// Kampagnen-Felder verwalten (nachtraeglich bearbeitbar)
+// ──────────────────────────────────────────────
+
+const feldSchema = z.object({
+  feldname: z.string().min(1).max(100).optional(), // wird aus bezeichnung abgeleitet falls leer
+  bezeichnung: z.string().min(1).max(500),
+  feldtyp: z.enum(['text', 'zahl', 'email', 'telefon', 'datum', 'auswahl', 'ja_nein', 'mehrzeilig']),
+  pflichtfeld: z.boolean().optional(),
+  optionen: z.array(z.string()).optional(),
+  reihenfolge: z.number().int().optional(),
+  platzhalter: z.string().optional(),
+  hilfetext: z.string().optional(),
+});
+
+function feldnameAbleiten(bezeichnung: string): string {
+  return bezeichnung
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'feld';
+}
+
+// POST /api/v1/kampagnen/:id/felder — neues Feld zur Kampagne hinzufuegen
+kampagnenRouter.post('/:id/felder', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const daten = feldSchema.parse(req.body);
+    const feldname = daten.feldname || feldnameAbleiten(daten.bezeichnung);
+
+    // Hoechste Reihenfolge ermitteln + 1 (falls nicht mitgegeben)
+    const max = await prisma.kampagnenFeld.findFirst({
+      where: { kampagneId: req.params.id },
+      orderBy: { reihenfolge: 'desc' },
+      select: { reihenfolge: true },
+    });
+    const reihenfolge = daten.reihenfolge ?? ((max?.reihenfolge ?? -1) + 1);
+
+    const feld = await prisma.kampagnenFeld.create({
+      data: {
+        kampagneId: req.params.id,
+        feldname,
+        bezeichnung: daten.bezeichnung,
+        feldtyp: daten.feldtyp,
+        pflichtfeld: daten.pflichtfeld ?? false,
+        optionen: daten.optionen ? (daten.optionen as Prisma.InputJsonValue) : Prisma.JsonNull,
+        reihenfolge,
+        platzhalter: daten.platzhalter || null,
+        hilfetext: daten.hilfetext || null,
+      },
+    });
+
+    res.status(201).json({ erfolg: true, daten: feld });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// PATCH /api/v1/kampagnen/:id/felder/:feldId — Feld bearbeiten
+kampagnenRouter.patch('/:id/felder/:feldId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const daten = feldSchema.partial().parse(req.body);
+    const update: Prisma.KampagnenFeldUpdateInput = {};
+    if (daten.bezeichnung !== undefined) update.bezeichnung = daten.bezeichnung;
+    if (daten.feldtyp !== undefined) update.feldtyp = daten.feldtyp;
+    if (daten.pflichtfeld !== undefined) update.pflichtfeld = daten.pflichtfeld;
+    if (daten.optionen !== undefined) {
+      update.optionen = daten.optionen ? (daten.optionen as Prisma.InputJsonValue) : Prisma.JsonNull;
+    }
+    if (daten.reihenfolge !== undefined) update.reihenfolge = daten.reihenfolge;
+    if (daten.platzhalter !== undefined) update.platzhalter = daten.platzhalter || null;
+    if (daten.hilfetext !== undefined) update.hilfetext = daten.hilfetext || null;
+
+    const feld = await prisma.kampagnenFeld.update({
+      where: { id: req.params.feldId },
+      data: update,
+    });
+
+    res.json({ erfolg: true, daten: feld });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
+// DELETE /api/v1/kampagnen/:id/felder/:feldId — Feld entfernen
+// Wenn bereits Lead-Daten zu diesem Feld existieren, werden sie mit entfernt
+// (Cascade ueber explizite deleteMany-Transaktion, da Prisma-Relation kein
+// onDelete: Cascade hat).
+kampagnenRouter.delete('/:id/felder/:feldId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await prisma.$transaction([
+      prisma.leadFelddatum.deleteMany({ where: { feldId: req.params.feldId } }),
+      prisma.kampagnenFeld.delete({ where: { id: req.params.feldId } }),
+    ]);
+
+    res.json({ erfolg: true, nachricht: 'Feld geloescht' });
+  } catch (fehler) {
+    next(fehler);
+  }
+});

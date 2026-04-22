@@ -8,6 +8,8 @@ import { benutzeKampagneEinstellungenSpeichern } from '@/hooks/benutze-kampagne-
 import { benutzeFacebookForms } from '@/hooks/benutze-kunden-integrationen';
 import { benutzeTemplates } from '@/hooks/benutze-templates';
 import { KanalKonfiguration, type KanalKonfigurationWerte } from '@/components/kampagnen/kanal-konfiguration';
+import { FelderVerwaltung } from '@/components/kampagnen/felder-verwaltung';
+import type { KampagnenFeld } from '@/hooks/benutze-kampagnen-felder';
 import { useToastStore } from '@/stores/toast-store';
 
 const standardWerte: KanalKonfigurationWerte = {
@@ -305,6 +307,16 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
               Aktiviere die Demo-Freigabe, um eine oeffentliche URL zu erhalten.
             </p>
           )}
+        </div>
+      )}
+
+      {/* Formularfelder-Verwaltung */}
+      {kampagne && (
+        <div className="mb-5">
+          <FelderVerwaltung
+            kampagneId={id}
+            felder={((kampagne as unknown as { felder?: KampagnenFeld[] }).felder) || []}
+          />
         </div>
       )}
 
