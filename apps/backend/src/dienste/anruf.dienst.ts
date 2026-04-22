@@ -302,11 +302,17 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
 
     const gefilterteFelddaten = leadFelddaten.filter((f) => !istStandardBezeichnung(f.feld.bezeichnung));
 
-    const leadDatenBlock = [
-      `- Name: ${nameKombiniert}`,
-      `- E-Mail: ${lead.email || '—'}`,
-      ...gefilterteFelddaten.map((f) => `- ${f.feld.bezeichnung}: ${f.wert || '—'}`),
-    ].join('\n');
+    // Nummerierte Liste — der LLM sieht klar, wie viele Punkte zu bestaetigen sind
+    // und in welcher Reihenfolge er sie abarbeiten muss.
+    const leadDatenZeilen = [
+      `Name: ${nameKombiniert}`,
+      `E-Mail: ${lead.email || '—'}`,
+      ...gefilterteFelddaten.map((f) => `${f.feld.bezeichnung}: ${f.wert || '—'}`),
+    ];
+    const leadDatenBlock = leadDatenZeilen
+      .map((zeile, i) => `${i + 1}. ${zeile}`)
+      .join('\n');
+    const anzahlBestaetigungen = leadDatenZeilen.length;
 
     // Automatisch ermitteln welche Infos der Lead noch NICHT angegeben hat.
     // Diese werden als "zu erfassen" in einem eigenen Block gelistet,
@@ -375,14 +381,28 @@ ${zuErfassenZeilen.join('\n')}`
     // mit kampagne.vapiPrompt Vorrang hat.
     const kombinierterPrompt = `# UMGANG MIT LEAD-DATEN (HOECHSTE PRIORITAET — IMMER BEACHTEN)
 
-Alle Angaben im LEAD-DATEN-Block unten (ausser denen mit "—") hat der Lead
-bereits selbst bei der Anmeldung eingetragen. Du kennst sie also schon.
+Der LEAD-DATEN-Block weiter unten enthaelt eine NUMMERIERTE Liste mit
+${anzahlBestaetigungen} Punkten. Alle Angaben mit Wert (nicht "—") hat der Lead
+bereits selbst bei der Anmeldung eingetragen.
 
-- **Bestaetige** diese Angaben im Gespraech, frage sie NIEMALS erneut ab.
-  Beispiel: "Ich habe hier Ihr Geburtsdatum als fuenfzehnten April neunzehnhundertfuenfundachtzig — stimmt das so?"
-- Gehe die Angaben natuerlich durch, nicht wie eine Checkliste.
-- Nur bei Eintraegen mit "—" (leer) fragst du den Lead neu danach.
+## PFLICHT-ABLAUF (keine Ausnahmen)
+
+Du MUSST im Gespraech **JEDEN einzelnen Punkt** der Liste vom Lead bestaetigen
+lassen. **KEINEN** Punkt darfst du auslassen.
+
+- Gehe die Punkte **der Reihe nach durch** (Punkt 1, dann 2, dann 3, ...).
+- **Nie** einzelne Punkte weglassen, auch wenn sie unwichtig erscheinen — der
+  Admin hat bewusst entschieden, dass sie bestaetigt werden sollen.
+- Bei Punkten mit Wert: bestaetigen. Beispiel: "Ich habe hier Ihr Geburtsdatum
+  als fuenfzehnten April neunzehnhundertfuenfundachtzig — stimmt das so?"
+- Bei Punkten mit "—" (leer): einmal nachfragen.
+- **Erst wenn alle ${anzahlBestaetigungen} Punkte vom Lead bestaetigt (oder
+  korrigiert) wurden**, darfst du zum naechsten Gespraechs-Ziel uebergehen (z.B.
+  Terminvereinbarung). Vorher NICHT.
 - Wenn der Lead eine Angabe korrigieren moechte, nutze das Tool "leadDatenKorrigieren".
+
+Zaehle beim Durchgehen innerlich mit: "Punkt 1 bestaetigt... Punkt 2 bestaetigt
+... bis Punkt ${anzahlBestaetigungen} bestaetigt." Erst dann Abschluss.
 
 ## BESONDERE REGELN
 
@@ -403,9 +423,13 @@ Du sprichst AUSSCHLIESSLICH Deutsch. Niemals Englisch, auch nicht einzelne Woert
 
 ${datumsKontextErstellen()}
 
-# LEAD-DATEN (diese Daten hat der Lead bei der Anmeldung angegeben)
+# LEAD-DATEN (${anzahlBestaetigungen} Punkte — ALLE muessen bestaetigt werden)
 
-${leadDatenBlock}${erfassungsBlock}
+${leadDatenBlock}
+
+**PFLICHT:** Jeder der oben genannten ${anzahlBestaetigungen} Punkte muss vom Lead
+im Gespraech bestaetigt (oder korrigiert) worden sein, bevor du zur Terminvereinbarung
+oder zum Abschluss kommen darfst. Ueberspringen eines Punkts gilt als Fehler.${erfassungsBlock}
 
 # E-MAIL-ADRESSE VORLESEN
 
