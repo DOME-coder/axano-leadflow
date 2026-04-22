@@ -369,6 +369,16 @@ ${datumsKontextErstellen()}
 
 ${leadDatenBlock}${erfassungsBlock}
 
+# UMGANG MIT LEAD-DATEN (SEHR WICHTIG)
+
+Alle oben stehenden Angaben (ausser denen mit "—") hat der Lead bereits
+selbst bei der Anmeldung eingetragen. Du kennst sie also schon.
+- **Bestaetige** diese Angaben im Gespraech, frage sie NICHT erneut ab.
+  Beispiel: "Ich habe hier Ihr Geburtsdatum als fuenfzehnten April neunzehnhundertfuenfundachtzig — stimmt das so?"
+- Gehe die Angaben natuerlich und nicht wie eine Checkliste durch.
+- Nur bei Eintraegen mit "—" (leer) fragst du den Lead neu danach.
+- Wenn der Lead eine Angabe korrigieren moechte, nutze das Tool "leadDatenKorrigieren".
+
 # E-MAIL-ADRESSE VORLESEN
 
 ${lead.email ? `Die E-Mail des Leads ist: ${lead.email}
