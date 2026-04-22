@@ -15,6 +15,20 @@ export interface KampagnenFeldMeta {
   hilfetext: string | null;
 }
 
+// Feldbezeichnungen die bereits als Standardfelder oben im Formular erfasst werden.
+// Kampagnen-Felder mit diesen Bezeichnungen werden nicht doppelt angezeigt.
+const STANDARD_FELDER = new Set([
+  'vorname', 'nachname', 'name', 'vollstaendigername', 'vollstaendiger name',
+  'email', 'emailadresse', 'e-mail', 'e-mail-adresse', 'e-mail adresse',
+  'telefon', 'telefonnummer', 'handynummer', 'mobil', 'mobilnummer',
+]);
+
+function istStandardFeld(feld: KampagnenFeldMeta): boolean {
+  const normalisieren = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  return STANDARD_FELDER.has(normalisieren(feld.bezeichnung)) ||
+    STANDARD_FELDER.has(normalisieren(feld.feldname));
+}
+
 type Zustand = 'eingabe' | 'sendet' | 'wartet' | 'timeout' | 'fehler';
 
 interface Props {
@@ -23,6 +37,8 @@ interface Props {
 }
 
 export function DemoFormular({ slug, felder }: Props) {
+  // Kampagnen-Felder ohne Duplikate der Standardfelder (Vorname/Nachname/E-Mail/Telefon).
+  const zusatzFelder = felder.filter((f) => !istStandardFeld(f));
   const [zustand, setZustand] = useState<Zustand>('eingabe');
   const [vorname, setVorname] = useState('');
   const [nachname, setNachname] = useState('');
@@ -60,8 +76,8 @@ export function DemoFormular({ slug, felder }: Props) {
       return;
     }
 
-    // Pflichtfelder pruefen
-    const fehlendeListe = felder
+    // Pflichtfelder pruefen (nur Zusatzfelder, Standardfelder werden oben separat validiert)
+    const fehlendeListe = zusatzFelder
       .filter((f) => f.pflichtfeld && !(felddaten[f.feldname] || '').trim())
       .map((f) => f.bezeichnung);
     if (fehlendeListe.length > 0) {
@@ -209,8 +225,8 @@ export function DemoFormular({ slug, felder }: Props) {
         />
       </div>
 
-      {/* Kampagnen-Felder (dynamisch) */}
-      {felder.length > 0 && (
+      {/* Kampagnen-Felder (dynamisch, ohne Duplikate der Standardfelder) */}
+      {zusatzFelder.length > 0 && (
         <div className="pt-4 mt-2 border-t ax-rahmen-leicht space-y-4">
           <div>
             <h3 className="text-sm font-semibold ax-titel">Zusaetzliche Angaben</h3>
@@ -219,7 +235,7 @@ export function DemoFormular({ slug, felder }: Props) {
             </p>
           </div>
 
-          {felder.map((feld) => (
+          {zusatzFelder.map((feld) => (
             <FeldRenderer
               key={feld.id}
               feld={feld}

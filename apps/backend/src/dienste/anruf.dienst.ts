@@ -288,10 +288,24 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     // Telefon bewusst NICHT im Block — der Lead nimmt den Anruf entgegen, die
     // Nummer ist damit implizit bestaetigt. Die KI braucht sie nicht erneut.
     const nameKombiniert = [lead.vorname, lead.nachname].filter(Boolean).join(' ') || '—';
+
+    // Kampagnen-Felder herausfiltern, die denselben Inhalt wie die Standardfelder
+    // haben (z.B. Kampagne hat ein Feld "Vorname" zusaetzlich) — sonst steht der
+    // Name doppelt im Prompt.
+    const STANDARD_BEZEICHNUNGEN = new Set([
+      'vorname', 'nachname', 'name', 'vollstaendigername', 'vollstaendiger name',
+      'email', 'emailadresse', 'e-mail', 'e-mail-adresse', 'e-mail adresse',
+      'telefon', 'telefonnummer', 'handynummer', 'mobil', 'mobilnummer',
+    ]);
+    const istStandardBezeichnung = (s: string) =>
+      STANDARD_BEZEICHNUNGEN.has(s.toLowerCase().replace(/\s+/g, ' ').trim());
+
+    const gefilterteFelddaten = leadFelddaten.filter((f) => !istStandardBezeichnung(f.feld.bezeichnung));
+
     const leadDatenBlock = [
       `- Name: ${nameKombiniert}`,
       `- E-Mail: ${lead.email || '—'}`,
-      ...leadFelddaten.map((f) => `- ${f.feld.bezeichnung}: ${f.wert || '—'}`),
+      ...gefilterteFelddaten.map((f) => `- ${f.feld.bezeichnung}: ${f.wert || '—'}`),
     ].join('\n');
 
     // Automatisch ermitteln welche Infos der Lead noch NICHT angegeben hat.
@@ -317,6 +331,9 @@ export async function anrufDurchfuehren(anrufVersuchId: string) {
     // Kampagnen-Felder die leer sind
     const kampagnenFelder = ((kampagne as { felder?: Array<{ id: string; bezeichnung: string; feldtyp: string; pflichtfeld: boolean }> }).felder) || [];
     for (const feld of kampagnenFelder) {
+      // Duplikate der Standardfelder ueberspringen — diese werden bereits
+      // ueber lead.vorname / lead.nachname / lead.email abgebildet.
+      if (istStandardBezeichnung(feld.bezeichnung)) continue;
       const wert = felddatenMap.get(feld.id);
       if (wert && wert.trim().length > 0) continue; // bereits vorhanden
       let hinweis = '';
