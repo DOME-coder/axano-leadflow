@@ -1,12 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Copy, Mail, Plus, RefreshCw, Trash2, UserPlus, X } from 'lucide-react';
+import { AlertTriangle, Copy, KeyRound, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import {
   benutzeBenutzer,
   benutzeBenutzerAktualisieren,
-  benutzeBenutzerEinladen,
-  benutzeBenutzerEinladungNeuSenden,
   benutzeBenutzerErstellen,
   benutzeBenutzerLoeschen,
 } from '@/hooks/benutze-benutzer';
@@ -19,8 +17,6 @@ export default function BenutzerSeite() {
   const { data: benutzer, isLoading } = benutzeBenutzer();
   const { data: kunden } = benutzeKunden();
   const erstellen = benutzeBenutzerErstellen();
-  const einladen = benutzeBenutzerEinladen();
-  const neuSenden = benutzeBenutzerEinladungNeuSenden();
   const aktualisieren = benutzeBenutzerAktualisieren();
   const loeschen = benutzeBenutzerLoeschen();
   const { toastAnzeigen } = useToastStore();
@@ -35,14 +31,15 @@ export default function BenutzerSeite() {
   const [rolle, setRolle] = useState<Rolle>('mitarbeiter');
   const [kundeId, setKundeId] = useState('');
   const [fehler, setFehler] = useState('');
-  const [erfolgsLink, setErfolgsLink] = useState<{ email: string; link: string } | null>(null);
+  const [zugangsDaten, setZugangsDaten] = useState<{ email: string; passwort: string; name: string; kunde?: string | null } | null>(null);
 
   const istKundenRolle = rolle === 'kunde';
 
-  const linkKopieren = async (link: string) => {
+  const zugangsDatenKopieren = async (daten: { email: string; passwort: string }) => {
     try {
-      await navigator.clipboard.writeText(link);
-      toastAnzeigen('erfolg', 'Einladungs-Link kopiert');
+      const text = `E-Mail: ${daten.email}\nPasswort: ${daten.passwort}`;
+      await navigator.clipboard.writeText(text);
+      toastAnzeigen('erfolg', 'Zugangsdaten kopiert');
     } catch {
       toastAnzeigen('fehler', 'Kopieren fehlgeschlagen');
     }
@@ -57,17 +54,6 @@ export default function BenutzerSeite() {
     } catch (f: unknown) {
       const nachricht = (f as { response?: { data?: { fehler?: string } } })?.response?.data?.fehler;
       toastAnzeigen('fehler', nachricht || 'Loeschen fehlgeschlagen');
-    }
-  };
-
-  const einladungErneutSenden = async (benutzerId: string, benutzerEmail: string) => {
-    try {
-      const antwort = await neuSenden.mutateAsync(benutzerId);
-      toastAnzeigen('erfolg', 'Einladung erneut versendet');
-      setErfolgsLink({ email: benutzerEmail, link: antwort.einladungsLink });
-    } catch (f: unknown) {
-      const nachricht = (f as { response?: { data?: { fehler?: string } } })?.response?.data?.fehler;
-      toastAnzeigen('fehler', nachricht || 'Erneutes Senden fehlgeschlagen');
     }
   };
 
@@ -88,32 +74,27 @@ export default function BenutzerSeite() {
       setFehler('Vorname, Nachname und E-Mail sind erforderlich');
       return;
     }
-
-    if (istKundenRolle) {
-      if (!kundeId) {
-        setFehler('Bitte einen Kunden zuordnen');
-        return;
-      }
-      try {
-        const antwort = await einladen.mutateAsync({ vorname, nachname, email, kundeId });
-        toastAnzeigen('erfolg', 'Einladung per E-Mail versendet');
-        setErfolgsLink({ email, link: antwort.einladungsLink });
-        setModalOffen(false);
-        zuruecksetzen();
-      } catch (f: unknown) {
-        const nachricht = (f as { response?: { data?: { fehler?: string } } })?.response?.data?.fehler;
-        setFehler(nachricht || 'Fehler beim Versenden der Einladung');
-      }
+    if (passwort.length < 8) {
+      setFehler('Passwort muss mindestens 8 Zeichen lang sein');
+      return;
+    }
+    if (istKundenRolle && !kundeId) {
+      setFehler('Bitte einen Kunden zuordnen');
       return;
     }
 
-    if (!passwort) {
-      setFehler('Passwort ist erforderlich');
-      return;
-    }
     try {
-      await erstellen.mutateAsync({ vorname, nachname, email, passwort, rolle });
-      toastAnzeigen('erfolg', 'Benutzer erstellt');
+      await erstellen.mutateAsync({
+        vorname,
+        nachname,
+        email,
+        passwort,
+        rolle,
+        ...(istKundenRolle ? { kundeId } : {}),
+      });
+      const kundenName = istKundenRolle ? (kunden?.eintraege?.find((k) => k.id === kundeId)?.name ?? null) : null;
+      toastAnzeigen('erfolg', istKundenRolle ? 'Kunden-Zugang angelegt' : 'Benutzer erstellt');
+      setZugangsDaten({ email, passwort, name: `${vorname} ${nachname}`, kunde: kundenName });
       setModalOffen(false);
       zuruecksetzen();
     } catch (f: unknown) {
@@ -147,30 +128,37 @@ export default function BenutzerSeite() {
         </button>
       </div>
 
-      {erfolgsLink && (
+      {zugangsDaten && (
         <div className="mb-5 ax-karte border-l-4 border-axano-orange rounded-xl p-4">
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-lg bg-axano-orange/10 flex items-center justify-center flex-shrink-0">
-              <Mail className="w-4 h-4 text-axano-orange" strokeWidth={2.2} />
+              <KeyRound className="w-4 h-4 text-axano-orange" strokeWidth={2.2} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold ax-titel">Einladung an {erfolgsLink.email} versendet</p>
-              <p className="text-xs ax-text-sekundaer mt-1">
-                Falls die E-Mail nicht ankommt (Spam-Filter, falsche Adresse), kannst du den Link unten kopieren
-                und dem Kunden manuell per Chat/WhatsApp zusenden. Der Link ist 7 Tage gueltig.
+              <p className="text-sm font-semibold ax-titel">
+                Zugang fuer {zugangsDaten.name}{zugangsDaten.kunde ? ` (${zugangsDaten.kunde})` : ''} angelegt
               </p>
+              <p className="text-xs ax-text-sekundaer mt-1">
+                Gib diese Zugangsdaten dem Benutzer persoenlich weiter (Chat, WhatsApp, Telefon).
+                Das Passwort wird nur einmal angezeigt — danach ist es nicht mehr sichtbar.
+              </p>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mt-3 text-xs">
+                <span className="ax-text-sekundaer">E-Mail:</span>
+                <code className="ax-text font-medium">{zugangsDaten.email}</code>
+                <span className="ax-text-sekundaer">Passwort:</span>
+                <code className="ax-text font-medium">{zugangsDaten.passwort}</code>
+              </div>
               <div className="flex items-center gap-2 mt-3">
-                <code className="flex-1 text-xs ax-karte-erhoeht ax-text px-3 py-2 rounded-lg truncate">{erfolgsLink.link}</code>
                 <button
-                  onClick={() => linkKopieren(erfolgsLink.link)}
+                  onClick={() => zugangsDatenKopieren({ email: zugangsDaten.email, passwort: zugangsDaten.passwort })}
                   className="flex items-center gap-1 text-xs bg-axano-orange hover:bg-orange-600 text-white px-3 py-2 rounded-lg transition-all"
                 >
                   <Copy className="w-3 h-3" strokeWidth={2.2} />
-                  Kopieren
+                  Zugangsdaten kopieren
                 </button>
               </div>
             </div>
-            <button onClick={() => setErfolgsLink(null)} className="p-1 ax-text-tertiaer hover:ax-text">
+            <button onClick={() => setZugangsDaten(null)} className="p-1 ax-text-tertiaer hover:ax-text">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -214,17 +202,6 @@ export default function BenutzerSeite() {
                   </td>
                   <td className="px-5 py-3 text-right">
                     <div className="flex items-center gap-3 justify-end">
-                      {b.rolle === 'kunde' && !b.aktiv && (
-                        <button
-                          onClick={() => einladungErneutSenden(b.id, b.email)}
-                          disabled={neuSenden.isPending}
-                          className="text-xs text-axano-orange hover:text-orange-700 font-medium flex items-center gap-1 disabled:opacity-50"
-                          title="Neuen Einladungs-Token generieren und E-Mail erneut senden"
-                        >
-                          <RefreshCw className="w-3 h-3" strokeWidth={2.2} />
-                          Einladung erneut senden
-                        </button>
-                      )}
                       {b.aktiv ? (
                         <button
                           onClick={() => aktualisieren.mutate({ id: b.id, aktiv: false })}
@@ -263,7 +240,7 @@ export default function BenutzerSeite() {
           <div className="relative ax-karte rounded-xl shadow-xl w-full max-w-md m-4 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold ax-titel flex items-center gap-2">
-                <UserPlus className="w-5 h-5" /> {istKundenRolle ? 'Kunden-Zugang einladen' : 'Neuer Benutzer'}
+                <UserPlus className="w-5 h-5" /> {istKundenRolle ? 'Kunden-Zugang anlegen' : 'Neuer Benutzer'}
               </h2>
               <button onClick={() => setModalOffen(false)} className="p-1 ax-text-tertiaer hover:text-[var(--text)]">
                 <X className="w-4 h-4" />
@@ -289,7 +266,7 @@ export default function BenutzerSeite() {
                 <option value="kunde">Kunde (Self-Service-Zugang)</option>
               </select>
 
-              {istKundenRolle ? (
+              {istKundenRolle && (
                 <div className="space-y-2">
                   <select
                     value={kundeId}
@@ -301,19 +278,22 @@ export default function BenutzerSeite() {
                       <option key={k.id} value={k.id}>{k.name}</option>
                     ))}
                   </select>
-                  <p className="text-xs ax-text-tertiaer leading-relaxed">
-                    Der Kunde erhaelt eine Einladungs-E-Mail mit einem 7-Tage-gueltigen Link, um sein Passwort
-                    selbst zu setzen. Er sieht nach dem Login ausschliesslich seine eigenen Integrationen.
-                  </p>
                 </div>
-              ) : (
-                <input
-                  value={passwort}
-                  onChange={(e) => setPasswort(e.target.value)}
-                  type="password"
-                  placeholder="Passwort (min. 8 Zeichen)"
-                  className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe"
-                />
+              )}
+
+              <input
+                value={passwort}
+                onChange={(e) => setPasswort(e.target.value)}
+                type="text"
+                placeholder="Passwort (min. 8 Zeichen)"
+                className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe font-mono"
+              />
+
+              {istKundenRolle && (
+                <p className="text-xs ax-text-tertiaer leading-relaxed">
+                  Der Zugang wird sofort aktiviert. Gib dem Kunden E-Mail und Passwort persoenlich weiter —
+                  er sieht nach dem Login ausschliesslich seine eigenen Integrationen.
+                </p>
               )}
             </div>
 
@@ -321,10 +301,10 @@ export default function BenutzerSeite() {
               <button onClick={() => setModalOffen(false)} className="border ax-rahmen-leicht ax-text px-4 py-2 rounded-lg text-sm">Abbrechen</button>
               <button
                 onClick={absenden}
-                disabled={erstellen.isPending || einladen.isPending}
+                disabled={erstellen.isPending}
                 className="bg-axano-orange hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50"
               >
-                {istKundenRolle ? 'Einladung senden' : 'Erstellen'}
+                {istKundenRolle ? 'Zugang anlegen' : 'Erstellen'}
               </button>
             </div>
           </div>

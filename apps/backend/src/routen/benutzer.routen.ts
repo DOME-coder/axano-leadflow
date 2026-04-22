@@ -38,17 +38,31 @@ const benutzerErstellenSchema = z.object({
   vorname: z.string().min(1, 'Vorname ist erforderlich'),
   nachname: z.string().min(1, 'Nachname ist erforderlich'),
   passwort: z.string().min(8, 'Passwort muss mindestens 8 Zeichen lang sein'),
-  rolle: z.enum(['admin', 'mitarbeiter']).default('mitarbeiter'),
+  rolle: z.enum(['admin', 'mitarbeiter', 'kunde']).default('mitarbeiter'),
+  kundeId: z.string().uuid().optional(),
 });
 
 // POST /api/v1/benutzer (nur Admin)
+// Legt Benutzer direkt mit Passwort an. Fuer Rolle 'kunde' ist kundeId Pflicht —
+// der Benutzer ist sofort aktiv und kann sich ohne Einladungs-Mail einloggen.
 benutzerRouter.post('/', nurAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const daten = benutzerErstellenSchema.parse(req.body);
 
+    if (daten.rolle === 'kunde' && !daten.kundeId) {
+      throw new AppFehler('Fuer Rolle "kunde" ist kundeId erforderlich', 400, 'KUNDE_ID_FEHLT');
+    }
+
     const bestehend = await prisma.benutzer.findUnique({ where: { email: daten.email } });
     if (bestehend) {
       throw new AppFehler('E-Mail-Adresse ist bereits vergeben', 409, 'EMAIL_EXISTIERT');
+    }
+
+    if (daten.kundeId) {
+      const kunde = await prisma.kunde.findUnique({ where: { id: daten.kundeId } });
+      if (!kunde) {
+        throw new AppFehler('Kunde nicht gefunden', 404, 'NICHT_GEFUNDEN');
+      }
     }
 
     const passwortHash = await bcrypt.hash(daten.passwort, 12);
@@ -59,6 +73,8 @@ benutzerRouter.post('/', nurAdmin, async (req: Request, res: Response, next: Nex
         nachname: daten.nachname,
         passwortHash,
         rolle: daten.rolle,
+        aktiv: true,
+        kundeId: daten.rolle === 'kunde' ? daten.kundeId! : null,
       },
       select: {
         id: true,
@@ -67,6 +83,8 @@ benutzerRouter.post('/', nurAdmin, async (req: Request, res: Response, next: Nex
         nachname: true,
         rolle: true,
         aktiv: true,
+        kundeId: true,
+        kunde: { select: { id: true, name: true } },
         erstelltAm: true,
       },
     });

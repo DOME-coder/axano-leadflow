@@ -22,7 +22,8 @@ export function benutzeBenutzerErstellen() {
       vorname: string;
       nachname: string;
       passwort: string;
-      rolle?: string;
+      rolle?: 'admin' | 'mitarbeiter' | 'kunde';
+      kundeId?: string;
     }) => {
       const { data } = await apiClient.post('/benutzer', daten);
       return data.daten as Benutzer;
