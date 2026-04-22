@@ -99,6 +99,10 @@ app.use('/api/v1', rateLimiter);
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/kampagnen', kampagnenRouter);
+// WICHTIG: Kunden-Integrationen-Router MUSS vor kundenRouter registriert werden,
+// sonst fangen die kundenRouter-Middlewares (nurAdminOderMitarbeiter) die Anfrage
+// vom Kunden-Selfservice-Portal ab und antworten mit 403.
+app.use('/api/v1/kunden/:kundeId/integrationen', kundenIntegrationenRouter);
 app.use('/api/v1/kunden', kundenRouter);
 app.use('/api/v1/prompt-vorlagen', promptVorlagenRouter);
 app.use('/api/v1/kampagnen/:kampagneId/leads', kampagneLeadsRouter);
@@ -112,7 +116,6 @@ app.use('/api/v1/benutzer', benutzerRouter);
 app.use('/api/v1/kampagnen/:kampagneId/anrufe', kampagneAnrufeRouter);
 app.use('/api/v1/anrufe', anrufeRouter);
 app.use('/api/v1/termine', termineRouter);
-app.use('/api/v1/kunden/:kundeId/integrationen', kundenIntegrationenRouter);
 app.use('/api/v1/oauth', oauthRouter);
 app.use('/api/v1/test', testRouter);
 app.use('/api/v1/webhooks', webhooksRouter);
