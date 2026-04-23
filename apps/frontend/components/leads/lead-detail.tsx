@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink, Trash2, PhoneCall, Sparkles, MessageSquare, Zap, AlertTriangle, PhoneOff, PhoneOutgoing, StickyNote, ArrowRight, UserPlus, Edit3, Activity } from 'lucide-react';
-import { benutzeLead, benutzeNotizHinzufuegen, benutzeLeadLoeschen } from '@/hooks/benutze-leads';
+import { X, Send, Clock, User, Mail, Phone, Calendar, ExternalLink, Trash2, PhoneCall, Sparkles, MessageSquare, Zap, AlertTriangle, PhoneOff, PhoneOutgoing, StickyNote, ArrowRight, UserPlus, Edit3, Activity, RotateCw } from 'lucide-react';
+import { benutzeLead, benutzeNotizHinzufuegen, benutzeLeadLoeschen, benutzeLeadAnrufRetry } from '@/hooks/benutze-leads';
 import { benutzeLeadSofortAnrufen } from '@/hooks/benutze-anrufe';
 import { statusFarbeErmitteln } from '@/lib/typen';
 import { useToastStore } from '@/stores/toast-store';
@@ -79,6 +79,7 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
   const notizHinzufuegen = benutzeNotizHinzufuegen();
   const leadLoeschen = benutzeLeadLoeschen();
   const sofortAnrufen = benutzeLeadSofortAnrufen();
+  const anrufRetry = benutzeLeadAnrufRetry();
   const { toastAnzeigen } = useToastStore();
   const [neueNotiz, setNeueNotiz] = useState('');
 
@@ -93,6 +94,16 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
         f?.response?.data?.message ||
         'Sofort-Anruf konnte nicht gestartet werden';
       toastAnzeigen('fehler', nachricht);
+    }
+  };
+
+  const sequenzNeuStartenKlick = async () => {
+    try {
+      await anrufRetry.mutateAsync(leadId);
+      toastAnzeigen('erfolg', 'Anruf-Sequenz neu gestartet');
+    } catch (fehler: unknown) {
+      const f = fehler as { response?: { data?: { fehler?: string } } };
+      toastAnzeigen('fehler', f?.response?.data?.fehler || 'Neustart fehlgeschlagen');
     }
   };
 
@@ -164,6 +175,16 @@ export function LeadDetail({ leadId, onSchliessen }: LeadDetailProps) {
             >
               <PhoneCall className="w-3.5 h-3.5" strokeWidth={2.2} />
               {sofortAnrufen.isPending ? 'Startet…' : 'Sofort anrufen'}
+            </button>
+            <button
+              onClick={sequenzNeuStartenKlick}
+              disabled={anrufRetry.isPending || !lead || !(lead as { telefon?: string }).telefon}
+              title="Anruf-Sequenz neu starten (mit Zeitslot-Regeln und Retries)"
+              aria-label="Anruf-Sequenz neu starten"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ease-sanft disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] ax-fokus-ring border ax-rahmen-leicht ax-text hover:ax-hover"
+            >
+              <RotateCw className="w-3.5 h-3.5" strokeWidth={2.2} />
+              {anrufRetry.isPending ? 'Startet…' : 'Sequenz neu'}
             </button>
             <button
               onClick={loeschenKlick}

@@ -73,6 +73,15 @@ export function benutzeBenutzerEinladungNeuSenden() {
   });
 }
 
+export function benutzeBenutzerPasswortZuruecksetzen() {
+  return useMutation({
+    mutationFn: async ({ benutzerId, neuesPasswort }: { benutzerId: string; neuesPasswort: string }) => {
+      const { data } = await apiClient.post(`/benutzer/${benutzerId}/passwort-zuruecksetzen`, { neuesPasswort });
+      return data.daten as { email: string; neuesPasswort: string };
+    },
+  });
+}
+
 export function benutzeBenutzerLoeschen() {
   const queryClient = useQueryClient();
   return useMutation({

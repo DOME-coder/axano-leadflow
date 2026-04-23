@@ -59,6 +59,7 @@ export async function leadErstellen(daten: LeadErstellen) {
     if (bestehendesLead) {
       duplikatVon = bestehendesLead.id;
       istDuplikat = true;
+      logger.warn(`Duplikat-Lead erkannt in Kampagne ${daten.kampagneId}: dupliziert Lead ${bestehendesLead.id} (E-Mail/Telefon-Match)`);
     }
   }
 

@@ -92,7 +92,9 @@ export async function transkriptAnalysieren(
 
   const client = await claudeClientErstellen();
   if (!client) {
-    logger.warn('Anthropic API-Key nicht konfiguriert – verwende Heuristik');
+    // Auf error-Level, damit Sentry das als Alert erfasst — in Produktion ist die
+    // Heuristik eine deutliche Qualitaetsminderung der Lead-Analyse.
+    logger.error('Anthropic API-Key nicht konfiguriert – Lead-Analyse faellt auf Heuristik zurueck');
     return heuristikAnalyse(transkript, endedReason);
   }
 

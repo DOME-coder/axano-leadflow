@@ -149,6 +149,46 @@ benutzerRouter.patch('/passwort', async (req: Request, res: Response, next: Next
   }
 });
 
+// POST /api/v1/benutzer/:id/passwort-zuruecksetzen (nur Admin)
+// Admin setzt fuer einen anderen Benutzer ein neues Passwort. Der Klartext wird
+// einmalig zurueckgegeben, damit der Admin ihn dem Benutzer persoenlich weitergeben
+// kann. Kein E-Mail-Versand — passt zum restlichen Onboarding-Flow.
+const passwortZuruecksetzenSchema = z.object({
+  neuesPasswort: z.string().min(8, 'Passwort muss mindestens 8 Zeichen lang sein'),
+});
+benutzerRouter.post('/:id/passwort-zuruecksetzen', nurAdmin, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { neuesPasswort } = passwortZuruecksetzenSchema.parse(req.body);
+
+    if (req.params.id === req.benutzer!.benutzerId) {
+      throw new AppFehler('Eigenes Passwort bitte unter /benutzer/passwort aendern', 400, 'SELBST_RESET_NICHT_ERLAUBT');
+    }
+
+    const bestehend = await prisma.benutzer.findUnique({ where: { id: req.params.id } });
+    if (!bestehend) {
+      throw new AppFehler('Benutzer nicht gefunden', 404, 'NICHT_GEFUNDEN');
+    }
+
+    const passwortHash = await bcrypt.hash(neuesPasswort, 12);
+    await prisma.benutzer.update({
+      where: { id: req.params.id },
+      data: {
+        passwortHash,
+        aktiv: true,
+        loginVersuche: 0,
+        gesperrtBis: null,
+      },
+    });
+
+    res.json({
+      erfolg: true,
+      daten: { email: bestehend.email, neuesPasswort },
+    });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
+
 // PATCH /api/v1/benutzer/:id (nur Admin)
 benutzerRouter.patch('/:id', nurAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {

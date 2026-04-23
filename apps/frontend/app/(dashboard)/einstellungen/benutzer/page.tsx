@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Copy, KeyRound, Plus, Trash2, UserPlus, X } from 'lucide-react';
+import { AlertTriangle, Copy, KeyRound, Plus, RefreshCw, Trash2, UserPlus, X } from 'lucide-react';
 import {
   benutzeBenutzer,
   benutzeBenutzerAktualisieren,
   benutzeBenutzerErstellen,
   benutzeBenutzerLoeschen,
+  benutzeBenutzerPasswortZuruecksetzen,
 } from '@/hooks/benutze-benutzer';
 import { benutzeKunden } from '@/hooks/benutze-kunden';
 import { useToastStore } from '@/stores/toast-store';
@@ -19,9 +20,12 @@ export default function BenutzerSeite() {
   const erstellen = benutzeBenutzerErstellen();
   const aktualisieren = benutzeBenutzerAktualisieren();
   const loeschen = benutzeBenutzerLoeschen();
+  const passwortZuruecksetzen = benutzeBenutzerPasswortZuruecksetzen();
   const { toastAnzeigen } = useToastStore();
 
   const [loeschBestaetigung, setLoeschBestaetigung] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [resetBestaetigung, setResetBestaetigung] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [resetNeuesPasswort, setResetNeuesPasswort] = useState('');
 
   const [modalOffen, setModalOffen] = useState(false);
   const [vorname, setVorname] = useState('');
@@ -54,6 +58,28 @@ export default function BenutzerSeite() {
     } catch (f: unknown) {
       const nachricht = (f as { response?: { data?: { fehler?: string } } })?.response?.data?.fehler;
       toastAnzeigen('fehler', nachricht || 'Loeschen fehlgeschlagen');
+    }
+  };
+
+  const passwortResetDurchfuehren = async () => {
+    if (!resetBestaetigung || resetNeuesPasswort.length < 8) return;
+    try {
+      const antwort = await passwortZuruecksetzen.mutateAsync({
+        benutzerId: resetBestaetigung.id,
+        neuesPasswort: resetNeuesPasswort,
+      });
+      toastAnzeigen('erfolg', 'Passwort neu gesetzt');
+      setZugangsDaten({
+        email: antwort.email,
+        passwort: antwort.neuesPasswort,
+        name: resetBestaetigung.name,
+        kunde: null,
+      });
+      setResetBestaetigung(null);
+      setResetNeuesPasswort('');
+    } catch (f: unknown) {
+      const nachricht = (f as { response?: { data?: { fehler?: string } } })?.response?.data?.fehler;
+      toastAnzeigen('fehler', nachricht || 'Zuruecksetzen fehlgeschlagen');
     }
   };
 
@@ -202,6 +228,14 @@ export default function BenutzerSeite() {
                   </td>
                   <td className="px-5 py-3 text-right">
                     <div className="flex items-center gap-3 justify-end">
+                      <button
+                        onClick={() => setResetBestaetigung({ id: b.id, name: `${b.vorname} ${b.nachname}`, email: b.email })}
+                        className="text-xs text-axano-orange hover:text-orange-700 font-medium flex items-center gap-1"
+                        title="Neues Passwort fuer diesen Benutzer setzen"
+                      >
+                        <RefreshCw className="w-3 h-3" strokeWidth={2.2} />
+                        Passwort
+                      </button>
                       {b.aktiv ? (
                         <button
                           onClick={() => aktualisieren.mutate({ id: b.id, aktiv: false })}
@@ -342,6 +376,49 @@ export default function BenutzerSeite() {
               >
                 <Trash2 className="w-3.5 h-3.5" strokeWidth={2.2} />
                 Endgueltig loeschen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetBestaetigung && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => { setResetBestaetigung(null); setResetNeuesPasswort(''); }} />
+          <div className="relative ax-karte rounded-xl shadow-xl w-full max-w-md m-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold ax-titel flex items-center gap-2">
+                <KeyRound className="w-5 h-5" /> Passwort zuruecksetzen
+              </h2>
+              <button onClick={() => { setResetBestaetigung(null); setResetNeuesPasswort(''); }} className="p-1 ax-text-tertiaer hover:ax-text">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm ax-text-sekundaer mb-4 leading-relaxed">
+              Setze ein neues Passwort fuer <strong>{resetBestaetigung.name}</strong> ({resetBestaetigung.email}).
+              Das Passwort wird einmalig angezeigt — gib es dem Benutzer persoenlich weiter.
+            </p>
+            <input
+              value={resetNeuesPasswort}
+              onChange={(e) => setResetNeuesPasswort(e.target.value)}
+              type="text"
+              placeholder="Neues Passwort (min. 8 Zeichen)"
+              className="w-full px-3 py-2.5 text-sm rounded-lg ax-eingabe font-mono"
+              autoFocus
+            />
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                onClick={() => { setResetBestaetigung(null); setResetNeuesPasswort(''); }}
+                className="border ax-rahmen-leicht ax-text px-4 py-2 rounded-lg text-sm"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={passwortResetDurchfuehren}
+                disabled={passwortZuruecksetzen.isPending || resetNeuesPasswort.length < 8}
+                className="bg-axano-orange hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+              >
+                Passwort setzen
               </button>
             </div>
           </div>

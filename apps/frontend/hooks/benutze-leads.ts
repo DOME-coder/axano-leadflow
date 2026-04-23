@@ -91,3 +91,17 @@ export function benutzeNotizHinzufuegen() {
     },
   });
 }
+
+export function benutzeLeadAnrufRetry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (leadId: string) => {
+      const { data } = await apiClient.post(`/leads/${leadId}/anruf-retry`);
+      return data;
+    },
+    onSuccess: (_data, leadId) => {
+      queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+  });
+}

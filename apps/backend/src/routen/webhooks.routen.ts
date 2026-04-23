@@ -128,13 +128,24 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
       : undefined;
     const fbGeheimnis = process.env.FACEBOOK_APP_GEHEIMNIS;
 
-    if (fbGeheimnis && fbSignatur) {
+    // In Produktion: App-Secret MUSS gesetzt sein. Kein Fallback auf "ohne Pruefung"
+    // — sonst kann jeder Fake-Leads einschleusen, die echte Anrufe ausloesen.
+    if (!fbGeheimnis) {
+      if (process.env.NODE_ENV === 'production') {
+        logger.error('Facebook-Webhook abgelehnt: FACEBOOK_APP_GEHEIMNIS nicht gesetzt — Webhook wird in Produktion nicht akzeptiert');
+        throw new AppFehler('Server nicht korrekt konfiguriert', 500, 'FB_APP_GEHEIMNIS_FEHLT');
+      }
+      logger.warn('Facebook-Webhook: FACEBOOK_APP_GEHEIMNIS nicht gesetzt — Signatur-Verifikation uebersprungen (nur im Dev-Modus erlaubt).');
+    } else {
+      // Secret vorhanden: Signatur MUSS mitgeschickt und gueltig sein.
+      if (!fbSignatur) {
+        logger.warn('Facebook-Webhook ohne x-hub-signature-256-Header abgelehnt');
+        throw new AppFehler('Fehlende Signatur', 401, 'FB_SIGNATUR_FEHLT');
+      }
       const rohDaten = JSON.stringify(req.body);
       if (!webhookSignaturVerifizieren(rohDaten, fbSignatur, fbGeheimnis)) {
         throw new AppFehler('Ungültige Facebook-Signatur', 401, 'FB_SIGNATUR_UNGUELTIG');
       }
-    } else if (!fbGeheimnis) {
-      logger.warn('Facebook-Webhook: FACEBOOK_APP_GEHEIMNIS nicht gesetzt — Signatur-Verifikation uebersprungen. Bitte in Coolify-ENV setzen!');
     }
 
     const kampagne = await prisma.kampagne.findUnique({
@@ -456,29 +467,21 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
     const questionsAndAnswers = payload?.questions_and_answers as Array<{ answer: string }> | undefined;
     const telefonAusFormular = questionsAndAnswers?.[0]?.answer?.replace(/\s+/g, '') || undefined;
 
-    // Lead zuerst ermitteln, weil wir den kundeId für die Signature-Prüfung brauchen
-    let lead = email ? await prisma.lead.findFirst({
-      where: { geloescht: false, email },
-      orderBy: { erstelltAm: 'desc' },
-      include: { kampagne: { select: { kundeId: true } } },
-    }) : null;
+    // Signatur-Pruefung MUSS vor jeglichem DB-Write passieren — sonst kann jeder
+    // im Internet unsere Webhook-URL abfeuern und Leads/Termine manipulieren.
+    // Wir pruefen zuerst mit globaler Calendly-Config (Baseline-Schutz);
+    // wenn gar keine Konfiguration existiert, wird der Webhook in Prod abgelehnt.
+    const globaleCalendly = await integrationKonfigurationLesenMitFallback('calendly', null);
+    const signingKey = globaleCalendly?.webhook_signing_key;
 
-    if (!lead && telefonAusFormular) {
-      lead = await prisma.lead.findFirst({
-        where: { geloescht: false, telefon: { contains: telefonAusFormular.replace(/^\+49/, '').replace(/^0/, '') } },
-        orderBy: { erstelltAm: 'desc' },
-        include: { kampagne: { select: { kundeId: true } } },
-      });
-    }
-
-    // Signaturverifikation: Calendly-Format ist "t=<unix>,v1=<hex>"
-    // HMAC-Berechnung über "<t>.<rohpayload>" mit dem signing_key des Kunden
-    const calendlyKonfig = await integrationKonfigurationLesenMitFallback(
-      'calendly',
-      lead?.kampagne?.kundeId || null,
-    );
-    const signingKey = calendlyKonfig?.webhook_signing_key;
-    if (signingKey) {
+    if (!signingKey) {
+      if (process.env.NODE_ENV === 'production') {
+        logger.error('Calendly-Webhook abgelehnt: globaler webhook_signing_key fehlt');
+        res.status(500).json({ erfolg: false, fehler: 'Server nicht konfiguriert' });
+        return;
+      }
+      logger.warn('Calendly Webhook: kein signing_key konfiguriert — Signatur-Pruefung uebersprungen (nur im Dev-Modus erlaubt)');
+    } else {
       const signaturHeader = typeof req.headers['calendly-webhook-signature'] === 'string'
         ? (req.headers['calendly-webhook-signature'] as string)
         : '';
@@ -507,6 +510,21 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
         res.status(401).json({ erfolg: false, fehler: 'Ungültige Signatur' });
         return;
       }
+    }
+
+    // Lead erst NACH erfolgreicher Signatur-Pruefung suchen.
+    let lead = email ? await prisma.lead.findFirst({
+      where: { geloescht: false, email },
+      orderBy: { erstelltAm: 'desc' },
+      include: { kampagne: { select: { kundeId: true } } },
+    }) : null;
+
+    if (!lead && telefonAusFormular) {
+      lead = await prisma.lead.findFirst({
+        where: { geloescht: false, telefon: { contains: telefonAusFormular.replace(/^\+49/, '').replace(/^0/, '') } },
+        orderBy: { erstelltAm: 'desc' },
+        include: { kampagne: { select: { kundeId: true } } },
+      });
     }
 
     logger.info(`Calendly Webhook: ${eventTyp}, E-Mail: ${email}`);

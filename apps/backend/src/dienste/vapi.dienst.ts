@@ -53,6 +53,7 @@ export async function vapiAnrufStarten(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!antwort.ok) {
@@ -91,6 +92,7 @@ export async function vapiAnrufAbrufen(callId: string, kundeId?: string | null):
     headers: {
       'Authorization': `Bearer ${apiKey}`,
     },
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!antwort.ok) {

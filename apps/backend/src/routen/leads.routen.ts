@@ -150,3 +150,39 @@ leadsRouter.post('/:id/notizen', async (req: Request, res: Response, next: NextF
     next(fehler);
   }
 });
+
+// POST /api/v1/leads/:id/anruf-retry
+// Startet die Anruf-Sequenz fuer einen Lead manuell neu. Nuetzlich wenn
+// der automatische Anruf haengengeblieben ist oder bewusst erneut angerufen
+// werden soll. Setzt anrufVersucheAnzahl nicht zurueck — das waere zu drastisch.
+leadsRouter.post('/:id/anruf-retry', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const lead = await prisma.lead.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, kampagneId: true, telefon: true, geloescht: true },
+    });
+    if (!lead || lead.geloescht) {
+      res.status(404).json({ erfolg: false, fehler: 'Lead nicht gefunden' });
+      return;
+    }
+    if (!lead.telefon) {
+      res.status(400).json({ erfolg: false, fehler: 'Lead hat keine Telefonnummer' });
+      return;
+    }
+
+    const { anrufSequenzStarten } = await import('../dienste/anruf.dienst');
+    anrufSequenzStarten(lead.id, lead.kampagneId).catch(() => {});
+
+    await prisma.leadAktivitaet.create({
+      data: {
+        leadId: lead.id,
+        typ: 'manuell',
+        beschreibung: `Anruf-Sequenz manuell neu gestartet von ${req.benutzer?.email || 'Admin'}`,
+      },
+    });
+
+    res.json({ erfolg: true, nachricht: 'Anruf-Sequenz neu gestartet' });
+  } catch (fehler) {
+    next(fehler);
+  }
+});
