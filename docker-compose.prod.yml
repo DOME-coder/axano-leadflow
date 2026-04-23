@@ -18,6 +18,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    # AOF-Persistenz: Jobs in BullMQ-Queues ueberleben einen Redis-Restart.
+    # Ohne das gehen geplante Anrufe/Follow-ups bei Crash/Deploy verloren.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - redis_daten:/data
     healthcheck:

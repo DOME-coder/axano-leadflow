@@ -231,6 +231,9 @@ model Lead {
   termine        Termin[]
   anrufVersuche  AnrufVersuch[]
 
+  @@index([telefon])
+  @@index([email])
+  @@index([kampagneId, status])
   @@map("leads")
 }
 

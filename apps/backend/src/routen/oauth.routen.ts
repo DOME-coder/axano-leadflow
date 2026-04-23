@@ -252,8 +252,37 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
     }
 
     const tokenDaten = (await tokenAntwort.json()) as { access_token: string };
-    const userToken = tokenDaten.access_token;
-    logger.info('Facebook OAuth: User-Token erhalten, pruefe Permissions...');
+    const kurzlebigerUserToken = tokenDaten.access_token;
+    logger.info('Facebook OAuth: User-Token erhalten, tausche auf langlebigen Token...');
+
+    // Schritt 1b: User-Token SOFORT langlebig machen (60 Tage).
+    // Das ist der Meta-Weg: aus einem Long-Lived User-Token abgeleitete Page-Tokens
+    // sind automatisch "never expire". Wenn wir das ueberspringen, bekommen wir
+    // nur Short-Lived Page-Tokens (~1-2 Stunden gueltig).
+    let userToken = kurzlebigerUserToken;
+    try {
+      const llUserAntwort = await fetch(
+        `https://graph.facebook.com/v18.0/oauth/access_token?${new URLSearchParams({
+          grant_type: 'fb_exchange_token',
+          client_id: appId,
+          client_secret: appGeheimnis,
+          fb_exchange_token: kurzlebigerUserToken,
+        })}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (llUserAntwort.ok) {
+        const llUserDaten = (await llUserAntwort.json()) as { access_token: string; expires_in?: number };
+        userToken = llUserDaten.access_token;
+        logger.info(`Facebook: User-Token auf langlebig getauscht (expires_in: ${llUserDaten.expires_in || 'n/a'})`);
+      } else {
+        const fehlerText = await llUserAntwort.text();
+        logger.error('Facebook: Long-Lived User-Token-Tausch FEHLGESCHLAGEN — Page-Tokens werden ablaufen!', {
+          body: fehlerText.substring(0, 300),
+        });
+      }
+    } catch (e) {
+      logger.error('Facebook: Long-Lived User-Token-Tausch Exception', { error: e });
+    }
 
     // Debug: Token-Permissions pruefen
     try {
@@ -267,7 +296,8 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
       }
     } catch { /* nur Diagnose, kein Abbruch */ }
 
-    // Schritt 2: Seiten des Users abrufen
+    // Schritt 2: Seiten des Users abrufen MIT DEM LONG-LIVED USER-TOKEN.
+    // Dadurch sind die zurueckgegebenen Page-Access-Tokens permanent gueltig.
     // Bei "Facebook Login for Business" gibt /me/accounts ein leeres Array zurueck.
     // Wir muessen stattdessen ueber die Business-Asset-API gehen oder die Seiten-IDs
     // direkt per /me abrufen (mit dem granted_scopes Feld).
@@ -393,28 +423,9 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
     const seite = seitenListe[0];
     logger.info(`Facebook OAuth: Seite "${seite.name}" (ID: ${seite.id}) ausgewaehlt fuer Kunde ${kundeId}`);
 
-    // Schritt 3: Page-Token langlebig machen (60 Tage)
-    let langLebigerPageToken = seite.access_token;
-    try {
-      const llAntwort = await fetch(
-        `https://graph.facebook.com/v18.0/oauth/access_token?${new URLSearchParams({
-          grant_type: 'fb_exchange_token',
-          client_id: appId,
-          client_secret: appGeheimnis,
-          fb_exchange_token: seite.access_token,
-        })}`,
-        { signal: AbortSignal.timeout(10000) }
-      );
-      if (llAntwort.ok) {
-        const llDaten = (await llAntwort.json()) as { access_token: string };
-        langLebigerPageToken = llDaten.access_token;
-        logger.info(`Facebook: Page-Token fuer "${seite.name}" auf langlebig umgetauscht`);
-      } else {
-        logger.warn('Facebook: Langlebiger Token-Tausch fehlgeschlagen — verwende kurzlebigen Token');
-      }
-    } catch {
-      logger.warn('Facebook: Langlebiger Token-Tausch Timeout — verwende kurzlebigen Token');
-    }
+    // Der Page-Token ist aus dem Long-Lived User-Token abgeleitet und daher
+    // nach Meta's Doku permanent gueltig (never expires). Kein weiterer Tausch noetig.
+    const permanenterPageToken = seite.access_token;
 
     // Schritt 4: Webhook fuer leadgen auf der Seite registrieren
     try {
@@ -424,7 +435,7 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            access_token: langLebigerPageToken,
+            access_token: permanenterPageToken,
             subscribed_fields: ['leadgen'],
           }),
           signal: AbortSignal.timeout(10000),
@@ -448,10 +459,10 @@ oauthRouter.get('/facebook/callback', async (req: Request, res: Response, next: 
         app_id: appId,
         app_geheimnis: appGeheimnis,
         verify_token: process.env.FACEBOOK_VERIFY_TOKEN || '',
-        seiten_zugriffstoken: langLebigerPageToken,
+        seiten_zugriffstoken: permanenterPageToken,
         page_id: seite.id,
         page_name: seite.name,
-        page_access_token: langLebigerPageToken,
+        page_access_token: permanenterPageToken,
       },
       true,
     );
