@@ -39,7 +39,9 @@ export function Seitenleiste() {
   const router = useRouter();
   const { benutzer, abmelden } = useAuthStore();
   const { ausgewaehlterKundeId, kundeSetzen } = useUiStore();
-  const { data: kunden } = benutzeKunden();
+  // Im Dropdown muessen immer ALLE Kunden stehen, damit der Admin wechseln kann.
+  // Deshalb den globalen Filter hier bewusst ignorieren.
+  const { data: kunden } = benutzeKunden({ ignoriereGlobalenFilter: true });
 
   const handleAbmelden = () => {
     abmelden();

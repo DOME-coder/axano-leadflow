@@ -87,7 +87,7 @@ function NeueKampagneInhalt() {
   const suchParams = useSearchParams();
   const erstellen = benutzeKampagneErstellen();
   const { data: templates } = benutzeTemplates();
-  const { data: kunden } = benutzeKunden();
+  const { data: kunden } = benutzeKunden({ ignoriereGlobalenFilter: true });
   const kundeErstellen = benutzeKundeErstellen();
   const { toastAnzeigen } = useToastStore();
 

@@ -15,7 +15,7 @@ type Rolle = 'admin' | 'mitarbeiter' | 'kunde';
 
 export default function BenutzerSeite() {
   const { data: benutzer, isLoading } = benutzeBenutzer();
-  const { data: kunden } = benutzeKunden();
+  const { data: kunden } = benutzeKunden({ ignoriereGlobalenFilter: true });
   const erstellen = benutzeBenutzerErstellen();
   const aktualisieren = benutzeBenutzerAktualisieren();
   const loeschen = benutzeBenutzerLoeschen();

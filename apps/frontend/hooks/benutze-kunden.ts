@@ -5,8 +5,20 @@ import { apiClient } from '@/lib/api-client';
 import type { Kunde, PaginierteAntwort } from '@/lib/typen';
 import { useUiStore } from '@/stores/ui-store';
 
-export function benutzeKunden(filter?: { suche?: string }) {
-  const kundeId = useUiStore((s) => s.ausgewaehlterKundeId);
+/**
+ * Hook fuer Kunden-Listen.
+ *
+ * Standardmaessig wird der globale Kunden-Filter (Sidebar-Dropdown) angewendet
+ * — wenn ein Kunde ausgewaehlt ist, gibt der Hook nur diesen einen zurueck.
+ * Das ist das richtige Verhalten fuer Listen-Seiten wie /kunden.
+ *
+ * Fuer den Sidebar-Dropdown selbst (wo immer ALLE Kunden sichtbar sein muessen,
+ * damit der Admin ueberhaupt einen anderen auswaehlen kann) muss
+ * `ignoriereGlobalenFilter: true` gesetzt werden.
+ */
+export function benutzeKunden(filter?: { suche?: string; ignoriereGlobalenFilter?: boolean }) {
+  const globalerKundeId = useUiStore((s) => s.ausgewaehlterKundeId);
+  const kundeId = filter?.ignoriereGlobalenFilter ? null : globalerKundeId;
   return useQuery({
     queryKey: ['kunden', filter?.suche ?? null, kundeId ?? null],
     queryFn: async () => {
