@@ -3,14 +3,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { Kunde, PaginierteAntwort } from '@/lib/typen';
+import { useUiStore } from '@/stores/ui-store';
 
 export function benutzeKunden(filter?: { suche?: string }) {
+  const kundeId = useUiStore((s) => s.ausgewaehlterKundeId);
   return useQuery({
-    queryKey: ['kunden', filter],
+    queryKey: ['kunden', filter?.suche ?? null, kundeId ?? null],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filter?.suche) params.set('suche', filter.suche);
-      const { data } = await apiClient.get(`/kunden?${params}`);
+      if (kundeId) params.set('kunde_id', kundeId);
+      const queryString = params.toString();
+      const url = queryString ? `/kunden?${queryString}` : '/kunden';
+      const { data } = await apiClient.get(url);
       return data.daten as PaginierteAntwort<Kunde>;
     },
   });

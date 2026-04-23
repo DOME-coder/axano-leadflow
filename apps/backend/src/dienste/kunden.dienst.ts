@@ -6,12 +6,17 @@ export async function kundenAuflisten(filter: {
   suche?: string;
   seite?: number;
   proSeite?: number;
+  /** Wenn gesetzt, nur genau diesen Kunden zurueckgeben (globaler Kunden-Filter aus der Sidebar). */
+  kundeId?: string;
 }) {
   const seite = filter.seite || 1;
   const proSeite = filter.proSeite || 20;
   const skip = (seite - 1) * proSeite;
 
   const where: Prisma.KundeWhereInput = {};
+  if (filter.kundeId) {
+    where.id = filter.kundeId;
+  }
   if (filter.suche) {
     where.OR = [
       { name: { contains: filter.suche, mode: 'insensitive' } },

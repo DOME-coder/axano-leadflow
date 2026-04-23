@@ -17,6 +17,7 @@ import {
 } from '@/hooks/benutze-kunden-integrationen';
 import { FacebookDiagnoseModal } from '@/components/kampagnen/facebook-diagnose-modal';
 import { WhatsappMetaDiagnoseModal } from '@/components/kampagnen/whatsapp-meta-diagnose-modal';
+import { SmtpVerbinden } from '@/components/kunden/smtp-verbinden';
 
 export function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
   const { data: integrationen, isLoading } = benutzeKundenIntegrationen(kundeId);
@@ -254,22 +255,26 @@ export function KundenIntegrationenSektion({ kundeId }: { kundeId: string }) {
                     im Bereich <em>Webhooks</em> (optional, für Signatur-Prüfung eingehender Nachrichten).
                   </div>
                 )}
-                {integration.felder.map((feld) => (
-                  <div key={feld} className="space-y-0.5">
-                    <label className="text-xs font-medium ax-text">{feld}</label>
-                    <input
-                      type={
-                        feld.includes('geheimnis') || feld.includes('schluessel') || feld.includes('token') || feld.includes('passwort')
-                          ? 'password'
-                          : 'text'
-                      }
-                      value={formKonfig[feld] || ''}
-                      onChange={(e) => setFormKonfig({ ...formKonfig, [feld]: e.target.value })}
-                      className="w-full px-3 py-1.5 text-sm rounded-lg ax-eingabe"
-                      placeholder={feld}
-                    />
-                  </div>
-                ))}
+                {integration.name === 'smtp' ? (
+                  <SmtpVerbinden formKonfig={formKonfig} setFormKonfig={setFormKonfig} />
+                ) : (
+                  integration.felder.map((feld) => (
+                    <div key={feld} className="space-y-0.5">
+                      <label className="text-xs font-medium ax-text">{feld}</label>
+                      <input
+                        type={
+                          feld.includes('geheimnis') || feld.includes('schluessel') || feld.includes('token') || feld.includes('passwort')
+                            ? 'password'
+                            : 'text'
+                        }
+                        value={formKonfig[feld] || ''}
+                        onChange={(e) => setFormKonfig({ ...formKonfig, [feld]: e.target.value })}
+                        className="w-full px-3 py-1.5 text-sm rounded-lg ax-eingabe"
+                        placeholder={feld}
+                      />
+                    </div>
+                  ))
+                )}
                 <div className="flex items-center gap-2 pt-2">
                   <label className="flex items-center gap-1.5 text-xs ax-text cursor-pointer">
                     <input

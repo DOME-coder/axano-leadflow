@@ -38,6 +38,7 @@ kundenRouter.get('/', async (req: Request, res: Response, next: NextFunction) =>
       suche: typeof req.query.suche === 'string' ? req.query.suche : undefined,
       seite: typeof req.query.seite === 'string' ? parseInt(req.query.seite) : undefined,
       proSeite: typeof req.query.pro_seite === 'string' ? parseInt(req.query.pro_seite) : undefined,
+      kundeId: typeof req.query.kunde_id === 'string' ? req.query.kunde_id : undefined,
     });
     res.json({ erfolg: true, daten: ergebnis });
   } catch (fehler) {
