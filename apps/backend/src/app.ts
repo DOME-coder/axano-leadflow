@@ -43,6 +43,12 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 4000;
 
+// Hinter Coolify-Nginx-Proxy: dem ersten Hop vertrauen, damit X-Forwarded-For
+// korrekt gelesen wird. Sonst zaehlt express-rate-limit alle Requests gegen
+// eine einzige IP (die des Proxies) — das wuerde die ganze Plattform global
+// drosseln statt pro Client zu zaehlen.
+app.set('trust proxy', 1);
+
 // WebSocket initialisieren
 socketServerInitialisieren(httpServer);
 
