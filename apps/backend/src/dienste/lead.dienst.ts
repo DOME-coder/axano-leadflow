@@ -126,8 +126,15 @@ export async function leadErstellen(daten: LeadErstellen) {
     });
   }
 
-  // Automatisierungen auslösen (lead_eingetroffen)
-  automatisierungenAusloesen(daten.kampagneId, 'lead_eingetroffen', lead.id).catch(() => {});
+  // Automatisierungen auslösen (lead_eingetroffen) — Fehler nicht propagieren,
+  // damit Lead trotzdem erstellt wird; aber loggen, damit man's in Sentry sieht.
+  automatisierungenAusloesen(daten.kampagneId, 'lead_eingetroffen', lead.id).catch((fehler) => {
+    logger.error('Automatisierungs-Trigger lead_eingetroffen fehlgeschlagen', {
+      leadId: lead.id,
+      kampagneId: daten.kampagneId,
+      fehler: fehler instanceof Error ? fehler.message : fehler,
+    });
+  });
 
   // VAPI Anruf-Sequenz starten (wenn aktiviert)
   // Hinweis: Assistant-ID wird nicht mehr hier geprueft — sie kann auch aus
@@ -304,11 +311,20 @@ export async function leadAktualisieren(
       });
     }
 
-    // Automatisierungen auslösen (status_geaendert)
+    // Automatisierungen auslösen (status_geaendert) — Fehler nicht propagieren,
+    // damit Lead-Update trotzdem durchgeht; aber in Sentry sichtbar machen.
     automatisierungenAusloesen(lead.kampagneId, 'status_geaendert', lead.id, {
       vonStatus: lead.status,
       zuStatus: daten.status,
-    }).catch(() => {});
+    }).catch((fehler) => {
+      logger.error('Automatisierungs-Trigger status_geaendert fehlgeschlagen', {
+        leadId: lead.id,
+        kampagneId: lead.kampagneId,
+        vonStatus: lead.status,
+        zuStatus: daten.status,
+        fehler: fehler instanceof Error ? fehler.message : fehler,
+      });
+    });
   }
 
   return aktualisierterLead;

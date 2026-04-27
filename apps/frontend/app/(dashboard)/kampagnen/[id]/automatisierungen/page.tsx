@@ -43,14 +43,7 @@ export default function AutomatisierungenSeite({ params }: { params: { id: strin
 
   const handleLoeschen = (autoId: string) => {
     if (!confirm('Automatisierung wirklich löschen?')) return;
-    loeschen.mutate(autoId, {
-      onSuccess: () => {
-        console.log('Automatisierung gelöscht:', autoId);
-      },
-      onError: (fehler) => {
-        console.error('Löschen fehlgeschlagen:', fehler);
-      },
-    });
+    loeschen.mutate(autoId);
   };
 
   return (
