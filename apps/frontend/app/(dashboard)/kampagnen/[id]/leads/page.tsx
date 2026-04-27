@@ -3,6 +3,7 @@
 import { KanbanBoard } from '@/components/leads/kanban-board';
 import { benutzeKampagne } from '@/hooks/benutze-kampagnen';
 import { benutzeEchtzeit } from '@/hooks/benutze-echtzeit';
+import { benutzeKampagneKundenWaechter } from '@/hooks/benutze-kampagne-kunden-waechter';
 import { ArrowLeft, Copy, Check, Settings, Phone, LayoutGrid, Download, Trash2, RotateCcw } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { benutzeLeads } from '@/hooks/benutze-leads';
@@ -19,6 +20,8 @@ export default function KampagneLeadsSeite({ params }: { params: { id: string } 
 
   // Echtzeit-Updates für diese Kampagne
   benutzeEchtzeit(id);
+  // Wenn Kunden-Filter wechselt: zurueck zur Kampagnen-Liste falls Kampagne nicht passt
+  benutzeKampagneKundenWaechter(kampagne?.kundeId);
 
   const csvExportieren = async () => {
     setExportLaeuft(true);

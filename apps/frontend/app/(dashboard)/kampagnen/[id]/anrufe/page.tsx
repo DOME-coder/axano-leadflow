@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowLeft, Phone, Play, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { benutzeKampagne } from '@/hooks/benutze-kampagnen';
 import { benutzeAnrufe, benutzeAnrufeStarten } from '@/hooks/benutze-anrufe';
+import { benutzeKampagneKundenWaechter } from '@/hooks/benutze-kampagne-kunden-waechter';
 import { useToastStore } from '@/stores/toast-store';
 import { useState } from 'react';
 
@@ -29,6 +30,7 @@ const ergebnisAnzeige: Record<string, { farbe: string; text: string }> = {
 export default function AnrufeSeite({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data: kampagne } = benutzeKampagne(id);
+  benutzeKampagneKundenWaechter(kampagne?.kundeId);
   const { data: anrufeData, isLoading } = benutzeAnrufe(id);
   const starten = benutzeAnrufeStarten();
   const { toastAnzeigen } = useToastStore();

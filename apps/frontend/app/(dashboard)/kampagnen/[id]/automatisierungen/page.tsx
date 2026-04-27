@@ -10,6 +10,7 @@ import {
   benutzeAutomatisierungLoeschen,
 } from '@/hooks/benutze-automatisierungen';
 import { AutomatisierungsEditor } from '@/components/kampagnen/automatisierungs-editor';
+import { benutzeKampagneKundenWaechter } from '@/hooks/benutze-kampagne-kunden-waechter';
 
 const triggerBezeichnungen: Record<string, string> = {
   lead_eingetroffen: 'Lead eingetroffen',
@@ -30,6 +31,7 @@ const aktionBezeichnungen: Record<string, string> = {
 export default function AutomatisierungenSeite({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data: kampagne } = benutzeKampagne(id);
+  benutzeKampagneKundenWaechter(kampagne?.kundeId);
   const { data: automatisierungen, isLoading } = benutzeAutomatisierungen(id);
   const aktualisieren = benutzeAutomatisierungAktualisieren();
   const loeschen = benutzeAutomatisierungLoeschen();

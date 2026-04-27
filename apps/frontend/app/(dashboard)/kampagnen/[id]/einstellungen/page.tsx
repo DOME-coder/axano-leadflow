@@ -11,6 +11,7 @@ import { KanalKonfiguration, type KanalKonfigurationWerte } from '@/components/k
 import { FelderVerwaltung } from '@/components/kampagnen/felder-verwaltung';
 import type { KampagnenFeld } from '@/hooks/benutze-kampagnen-felder';
 import { useToastStore } from '@/stores/toast-store';
+import { benutzeKampagneKundenWaechter } from '@/hooks/benutze-kampagne-kunden-waechter';
 
 const standardWerte: KanalKonfigurationWerte = {
   vapiAktiviert: false,
@@ -50,6 +51,7 @@ const standardWerte: KanalKonfigurationWerte = {
 export default function KampagneEinstellungenSeite({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data: kampagne } = benutzeKampagne(id);
+  benutzeKampagneKundenWaechter(kampagne?.kundeId);
   const { data: templates } = benutzeTemplates();
   const speichern = benutzeKampagneEinstellungenSpeichern();
 
