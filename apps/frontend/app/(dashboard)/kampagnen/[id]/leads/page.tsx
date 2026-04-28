@@ -6,6 +6,7 @@ import { benutzeEchtzeit } from '@/hooks/benutze-echtzeit';
 import { benutzeKampagneKundenWaechter } from '@/hooks/benutze-kampagne-kunden-waechter';
 import { ArrowLeft, Copy, Check, Settings, Phone, LayoutGrid, Download, Trash2, RotateCcw } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
+import { webhookUrlErmitteln } from '@/lib/typen';
 import { benutzeLeads } from '@/hooks/benutze-leads';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -44,9 +45,11 @@ export default function KampagneLeadsSeite({ params }: { params: { id: string } 
     }
   };
 
-  const webhookUrl = kampagne?.webhookSlug
-    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'}/webhooks/${kampagne.webhookSlug}`
-    : null;
+  const webhookUrl = webhookUrlErmitteln(
+    kampagne?.triggerTyp ?? '',
+    kampagne?.webhookSlug,
+    process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1',
+  );
 
   const webhookKopieren = async () => {
     if (webhookUrl) {

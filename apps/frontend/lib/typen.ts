@@ -180,6 +180,38 @@ export const statusFarben: Record<string, string> = {
   'WhatsApp erhalten': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
 };
 
+/**
+ * Liefert die korrekte Webhook-URL fuer eine Kampagne, abhaengig vom Trigger-Typ.
+ * - facebook_lead_ads → /api/v1/webhooks/facebook/<slug>  (Meta-Webhook fuer Lead Ads)
+ * - whatsapp          → /api/v1/webhooks/superchat/<slug> (Superchat-Webhook)
+ * - webhook/webformular → /api/v1/webhooks/<slug>         (generisch)
+ * - email             → null (Leads kommen via IMAP-Polling, keine URL)
+ */
+export function webhookUrlErmitteln(
+  triggerTyp: string,
+  webhookSlug: string | null | undefined,
+  basisUrl?: string,
+): string | null {
+  if (!webhookSlug) return null;
+  const basis = basisUrl
+    || (typeof window !== 'undefined' ? `${window.location.origin}/api/v1` : '');
+  if (!basis) return null;
+
+  switch (triggerTyp) {
+    case 'facebook_lead_ads':
+      return `${basis}/webhooks/facebook/${webhookSlug}`;
+    case 'whatsapp':
+      return `${basis}/webhooks/superchat/${webhookSlug}`;
+    case 'webhook':
+    case 'webformular':
+      return `${basis}/webhooks/${webhookSlug}`;
+    case 'email':
+      return null;
+    default:
+      return `${basis}/webhooks/${webhookSlug}`;
+  }
+}
+
 // Dynamische Status-Farbe ermitteln (inkl. "Attempt #N")
 export function statusFarbeErmitteln(status: string): string {
   if (statusFarben[status]) return statusFarben[status];

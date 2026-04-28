@@ -12,6 +12,7 @@ import { FelderVerwaltung } from '@/components/kampagnen/felder-verwaltung';
 import type { KampagnenFeld } from '@/hooks/benutze-kampagnen-felder';
 import { useToastStore } from '@/stores/toast-store';
 import { benutzeKampagneKundenWaechter } from '@/hooks/benutze-kampagne-kunden-waechter';
+import { webhookUrlErmitteln } from '@/lib/typen';
 
 const standardWerte: KanalKonfigurationWerte = {
   vapiAktiviert: false,
@@ -118,9 +119,10 @@ export default function KampagneEinstellungenSeite({ params }: { params: { id: s
     webformular: 'Webformular',
   };
 
-  const webhookUrl = kampagne?.webhookSlug
-    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook/${kampagne.webhookSlug}`
-    : null;
+  const webhookUrl = webhookUrlErmitteln(
+    kampagne?.triggerTyp ?? '',
+    kampagne?.webhookSlug,
+  );
 
   const webhookKopieren = async () => {
     if (webhookUrl) {
