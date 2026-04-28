@@ -58,12 +58,14 @@ const verdictMap: Record<string, AnrufErgebnis> = {
  * Erstellt einen Anthropic Client (aus Integrations-Config oder Umgebungsvariable).
  */
 async function claudeClientErstellen(): Promise<Anthropic | null> {
+  // 30s-Timeout: ohne den blockiert ein haengender Request einen ganzen BullMQ-Worker
+  // beliebig lange — bei 5 Workern und vielen Leads staut sich die Queue.
   const konfig = await integrationKonfigurationLesen('anthropic');
   if (konfig?.api_schluessel) {
-    return new Anthropic({ apiKey: konfig.api_schluessel });
+    return new Anthropic({ apiKey: konfig.api_schluessel, timeout: 30_000 });
   }
   if (process.env.ANTHROPIC_API_KEY) {
-    return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 30_000 });
   }
   return null;
 }

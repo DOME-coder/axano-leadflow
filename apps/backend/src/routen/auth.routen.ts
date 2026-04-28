@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { prisma } from '../datenbank/prisma.client';
 import { AppFehler } from '../middleware/fehlerbehandlung';
@@ -8,6 +9,17 @@ import { authentifizierung } from '../middleware/authentifizierung';
 import { logger } from '../hilfsfunktionen/logger';
 
 export const authRouter = Router();
+
+// Brute-Force-Schutz pro IP fuer kostenintensive Anmelde-Endpoints.
+// Account-Lockout (5 Fehlversuche → 15 Min) verhindert Single-Account-Brute-Force,
+// aber nichts gegen verteilte Account-Enumeration. Daher zusaetzlich ein IP-Limit.
+const anmeldeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { erfolg: false, fehler: 'Zu viele Anmelde-Versuche – bitte 15 Minuten warten.' },
+});
 
 const anmeldeSchema = z.object({
   email: z.string().email('Ungültige E-Mail-Adresse'),
@@ -37,7 +49,7 @@ function refreshTokenErstellen(benutzerId: string): string {
 }
 
 // POST /api/v1/auth/anmelden
-authRouter.post('/anmelden', async (req: Request, res: Response, next: NextFunction) => {
+authRouter.post('/anmelden', anmeldeLimiter, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, passwort } = anmeldeSchema.parse(req.body);
 
@@ -132,6 +144,9 @@ authRouter.post('/anmelden', async (req: Request, res: Response, next: NextFunct
 });
 
 // POST /api/v1/auth/token-erneuern
+// Bewusst ohne anmeldeLimiter: legitime Nutzer mit mehreren Tabs koennen
+// bei kurzlebigen JWTs mehrfach refreshen, der globale 100/min-Limiter aus
+// app.ts reicht als Schutz aus.
 authRouter.post('/token-erneuern', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const refreshToken = req.cookies?.refresh_token;

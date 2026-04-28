@@ -15,6 +15,12 @@ interface LeadErstellen {
   quelle?: string;
   rohdaten?: Record<string, unknown>;
   felddaten?: Record<string, string>;
+  einwilligung?: {
+    am?: Date | string;
+    quelle?: string;
+    ip?: string;
+    text?: string;
+  };
 }
 
 export async function leadErstellen(daten: LeadErstellen) {
@@ -63,6 +69,17 @@ export async function leadErstellen(daten: LeadErstellen) {
     }
   }
 
+  // Einwilligungs-Pruefung (UWG §7 Abs. 2 Nr. 1, DSGVO Art. 6 lit. a):
+  // Bei B2C-Kampagnen muss vor dem ersten automatisierten Anruf eine nachweisbare
+  // Einwilligung vorliegen. Fehlt sie, wird der Lead in den Status "Einwilligung_ausstehend"
+  // gesetzt und KEIN Anruf gestartet — ein Mitarbeiter muss manuell freigeben oder
+  // die Datenquelle muss einen Consent-Wert liefern.
+  const einwilligungAm = daten.einwilligung?.am
+    ? (daten.einwilligung.am instanceof Date ? daten.einwilligung.am : new Date(daten.einwilligung.am))
+    : null;
+  const einwilligungFehlt = kampagne.einwilligungErforderlich && !einwilligungAm;
+  const initialerStatus = einwilligungFehlt ? 'Einwilligung_ausstehend' : 'Neu';
+
   // Lead erstellen
   const lead = await prisma.lead.create({
     data: {
@@ -75,7 +92,11 @@ export async function leadErstellen(daten: LeadErstellen) {
       rohdaten: (daten.rohdaten as Prisma.InputJsonValue) ?? Prisma.JsonNull,
       duplikatVon,
       istDuplikat,
-      status: 'Neu',
+      status: initialerStatus,
+      einwilligungAm,
+      einwilligungQuelle: daten.einwilligung?.quelle || null,
+      einwilligungIp: daten.einwilligung?.ip || null,
+      einwilligungText: daten.einwilligung?.text || null,
     },
   });
 
@@ -102,16 +123,22 @@ export async function leadErstellen(daten: LeadErstellen) {
   await prisma.leadStatusHistorie.create({
     data: {
       leadId: lead.id,
-      neuerStatus: 'Neu',
+      neuerStatus: initialerStatus,
+      grund: einwilligungFehlt ? 'Einwilligung erforderlich, fehlt' : undefined,
     },
   });
 
   // Aktivitätslog
+  const beschreibungSuffix = istDuplikat
+    ? ' (Duplikat)'
+    : einwilligungFehlt
+      ? ' (Einwilligung ausstehend — kein Auto-Anruf)'
+      : '';
   await prisma.leadAktivitaet.create({
     data: {
       leadId: lead.id,
       typ: 'lead_erstellt',
-      beschreibung: `Lead erstellt via ${daten.quelle || kampagne.triggerTyp}${istDuplikat ? ' (Duplikat)' : ''}`,
+      beschreibung: `Lead erstellt via ${daten.quelle || kampagne.triggerTyp}${beschreibungSuffix}`,
     },
   });
 
@@ -141,12 +168,22 @@ export async function leadErstellen(daten: LeadErstellen) {
   // der Kunden-Integration kommen. anrufSequenzStarten() macht den Check selbst
   // und loggt eine Warnung wenn weder Kampagne noch Kunden-Integration einen
   // Assistant haben.
-  if (lead.telefon && kampagne.vapiAktiviert) {
-    import('./anruf.dienst').then(({ anrufSequenzStarten }) => {
-      anrufSequenzStarten(lead.id, daten.kampagneId).catch((fehler) => {
-        logger.error('VAPI Sequenz-Start fehlgeschlagen:', { leadId: lead.id, error: fehler });
+  if (lead.telefon && kampagne.vapiAktiviert && !einwilligungFehlt) {
+    import('./anruf.dienst')
+      .then(({ anrufSequenzStarten }) =>
+        anrufSequenzStarten(lead.id, daten.kampagneId).catch((fehler) => {
+          logger.error('VAPI Sequenz-Start fehlgeschlagen:', {
+            leadId: lead.id,
+            error: fehler instanceof Error ? fehler.message : fehler,
+          });
+        }),
+      )
+      .catch((fehler) => {
+        logger.error('Dynamischer Import von anruf.dienst fehlgeschlagen', {
+          leadId: lead.id,
+          error: fehler instanceof Error ? fehler.message : fehler,
+        });
       });
-    });
   }
 
   return lead;

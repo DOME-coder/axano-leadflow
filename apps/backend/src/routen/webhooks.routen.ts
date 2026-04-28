@@ -3,11 +3,12 @@ import { prisma } from '../datenbank/prisma.client';
 import { AppFehler } from '../middleware/fehlerbehandlung';
 import { webhookSignaturVerifizieren } from '../hilfsfunktionen/webhook.verifikation';
 import { leadErstellen } from '../dienste/lead.dienst';
-import { facebookLeadAbrufen, facebookWebhookPayloadParsen } from '../dienste/facebook.dienst';
+import { facebookLeadAbrufen, facebookWebhookPayloadParsen, FacebookTokenInvalidFehler, facebookPageTokenErneuern } from '../dienste/facebook.dienst';
 import { superchatNachrichtParsen } from '../dienste/whatsapp.dienst';
 import { integrationKonfigurationLesenMitFallback } from '../dienste/integrationen.dienst';
 import { socketServer } from '../websocket/socket.handler';
 import { logger } from '../hilfsfunktionen/logger';
+import { telefonNormalisieren } from '../hilfsfunktionen/telefon.formatierung';
 
 export const webhooksRouter = Router();
 
@@ -167,10 +168,14 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
     // Unterstuetzt sowohl das alte Feld (seiten_zugriffstoken) als auch das neue (page_access_token)
     const triggerKonfig = kampagne.triggerKonfiguration as Record<string, string> | null;
     let zugriffstoken = triggerKonfig?.seiten_zugriffstoken;
+    let userZugriffstoken: string | undefined;
+    let pageId: string | undefined;
 
     if (!zugriffstoken) {
       const fbKonfig = await integrationKonfigurationLesenMitFallback('facebook', kampagne.kundeId);
       zugriffstoken = fbKonfig?.page_access_token || fbKonfig?.seiten_zugriffstoken;
+      userZugriffstoken = fbKonfig?.user_access_token;
+      pageId = fbKonfig?.page_id;
     }
 
     // Form-IDs aus der Trigger-Konfiguration (falls gesetzt → nur diese Forms akzeptieren)
@@ -196,12 +201,58 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
           if (zugriffstoken && aenderung.value?.leadgen_id) {
             try {
               leadDaten = await facebookLeadAbrufen(aenderung.value.leadgen_id, zugriffstoken, feldMappings);
-            } catch {
-              logger.warn('Facebook Graph API Fallback auf Webhook-Payload');
+            } catch (fehler) {
+              if (fehler instanceof FacebookTokenInvalidFehler) {
+                // Token abgelaufen/invalidiert. Versuch 1b: mit user_access_token einmalig
+                // einen neuen Page-Token holen und Lead-Abruf wiederholen.
+                logger.error('Facebook Page Access Token abgelaufen', {
+                  kampagne: kampagne.name,
+                  kundeId: kampagne.kundeId,
+                  leadgenId: aenderung.value.leadgen_id,
+                  fbCode: fehler.fbCode,
+                });
+                if (userZugriffstoken && pageId) {
+                  const neuerToken = await facebookPageTokenErneuern(pageId, userZugriffstoken);
+                  if (neuerToken) {
+                    logger.info('Facebook Page Access Token erneuert (in-memory) — Lead-Abruf wird wiederholt', {
+                      kampagne: kampagne.name,
+                    });
+                    try {
+                      leadDaten = await facebookLeadAbrufen(aenderung.value.leadgen_id, neuerToken, feldMappings);
+                      // Hinweis: Persistierung des neuen Tokens in die Integrations-Konfiguration
+                      // ist ein Folge-Schritt — Admin muss manuell die Integration neu speichern,
+                      // damit der Token beim naechsten Webhook nicht wieder abgelaufen ist.
+                      logger.warn('Facebook-Token wurde fuer diesen Request erneuert. Bitte Integration im Admin-UI neu speichern, um den Token persistent zu aktualisieren.', {
+                        kampagne: kampagne.name,
+                        kundeId: kampagne.kundeId,
+                      });
+                    } catch (nochmal) {
+                      logger.error('Facebook Lead-Abruf auch mit erneuertem Token fehlgeschlagen', {
+                        leadgenId: aenderung.value.leadgen_id,
+                        error: nochmal instanceof Error ? nochmal.message : nochmal,
+                      });
+                    }
+                  }
+                } else {
+                  logger.error('Facebook-Token-Refresh nicht moeglich: kein user_access_token oder page_id konfiguriert. Admin muss die Integration neu verbinden.', {
+                    kampagne: kampagne.name,
+                    kundeId: kampagne.kundeId,
+                    hatUserToken: !!userZugriffstoken,
+                    hatPageId: !!pageId,
+                  });
+                }
+              } else {
+                logger.warn('Facebook Graph API Fallback auf Webhook-Payload', {
+                  error: fehler instanceof Error ? fehler.message : fehler,
+                  leadgenId: aenderung.value.leadgen_id,
+                });
+              }
             }
           }
 
-          // Versuch 2: Webhook-Payload direkt parsen (Fallback)
+          // Versuch 2: Webhook-Payload direkt parsen (Fallback — Realtime-Webhooks
+          // enthalten allerdings standardmaessig KEIN field_data, deshalb ist der
+          // Graph-API-Pfad oben der primaere Weg.)
           if (!leadDaten && aenderung.value?.field_data) {
             leadDaten = facebookWebhookPayloadParsen(aenderung.value.field_data, feldMappings);
           }
@@ -281,11 +332,13 @@ webhooksRouter.post('/superchat/:kampagneSlug', async (req: Request, res: Respon
     });
 
     // Prüfen ob Lead mit dieser Telefonnummer schon existiert
-    if (kontaktDaten.telefon) {
+    // Telefon normalisieren (Meta/Superchat liefert oft "493012345678" ohne +, gespeichert ist "+49301234567")
+    const normalisierteTelefon = telefonNormalisieren(kontaktDaten.telefon);
+    if (normalisierteTelefon) {
       const bestehenderLead = await prisma.lead.findFirst({
         where: {
           kampagneId: kampagne.id,
-          telefon: kontaktDaten.telefon,
+          telefon: normalisierteTelefon,
           geloescht: false,
         },
       });
@@ -390,13 +443,24 @@ webhooksRouter.post('/vapi/tools', async (req: Request, res: Response, _next: Ne
 // ──────────────────────────────────────────────
 webhooksRouter.post('/vapi', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Optionale Secret-Verification – aus Integrations-Konfiguration oder Umgebungsvariable
+    // Secret-Verification: WENN ein Secret konfiguriert ist, muss es matchen — sonst
+    // koennten beliebige Aufrufer gefaelschte End-of-Call-Reports einschleusen und Leads
+    // als "Termin gebucht" markieren. WENN keins konfiguriert ist, akzeptieren wir den
+    // Webhook (mit Warning), damit das bestehende Setup nicht bricht. Empfehlung: Secret
+    // in Coolify-Env als VAPI_WEBHOOK_SECRET hinterlegen, dann ist der Schutz aktiv.
     const vapiKonfig = await integrationKonfigurationLesenMitFallback('vapi');
     const webhookSecret = vapiKonfig?.webhook_secret || process.env.VAPI_WEBHOOK_SECRET;
-    if (webhookSecret && req.headers['x-vapi-secret'] !== webhookSecret) {
-      logger.warn('VAPI Webhook mit ungültigem Secret empfangen');
-      res.status(401).json({ erfolg: false, fehler: 'Ungültiges Webhook-Secret' });
-      return;
+    if (!webhookSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        logger.warn('VAPI Webhook: kein webhook_secret konfiguriert — Pruefung uebersprungen. Setze VAPI_WEBHOOK_SECRET fuer Produktions-Sicherheit.');
+      }
+    } else {
+      const empfangen = req.headers['x-vapi-secret'];
+      if (typeof empfangen !== 'string' || empfangen !== webhookSecret) {
+        logger.warn('VAPI Webhook mit ungültigem Secret empfangen');
+        res.status(401).json({ erfolg: false, fehler: 'Ungültiges Webhook-Secret' });
+        return;
+      }
     }
 
     const body = req.body;
@@ -508,6 +572,22 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
         }
       } catch {
         res.status(401).json({ erfolg: false, fehler: 'Ungültige Signatur' });
+        return;
+      }
+    }
+
+    // Idempotenz-Check: Calendly retried bei 5xx, ohne Schutz wuerden bei
+    // jedem Retry ein zweiter Termin und doppelte Status-Updates entstehen.
+    // payload.uri ist pro Calendly-Buchung eindeutig.
+    const calendlyEventUri = payload?.uri as string | undefined;
+    if (eventTyp === 'invitee.created' && calendlyEventUri) {
+      const bereitsVerarbeitet = await prisma.termin.findUnique({
+        where: { externeId: calendlyEventUri },
+        select: { id: true },
+      });
+      if (bereitsVerarbeitet) {
+        logger.info(`Calendly: Duplikat-Event ${calendlyEventUri} ignoriert (Termin ${bereitsVerarbeitet.id} existiert bereits)`);
+        res.status(200).json({ erfolg: true });
         return;
       }
     }
@@ -750,10 +830,12 @@ webhooksRouter.post('/whatsapp-meta', async (req: Request, res: Response, next: 
       }
 
       // Bestehenden Lead suchen (per Telefon, auf derselben Kampagne)
+      // Telefon normalisieren — Meta liefert oft "493012345678" ohne +, gespeichert ist "+493012345678"
+      const normalisierteTelefon = telefonNormalisieren(nachricht.vonTelefon) ?? nachricht.vonTelefon;
       const lead = await prisma.lead.findFirst({
         where: {
           kampagneId: kampagne.id,
-          telefon: nachricht.vonTelefon,
+          telefon: normalisierteTelefon,
           geloescht: false,
         },
         select: { id: true, status: true },

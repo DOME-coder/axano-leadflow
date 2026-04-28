@@ -167,6 +167,7 @@ export interface Termin {
 // Status-Farben (Light + Dark)
 export const statusFarben: Record<string, string> = {
   'Neu': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  'Einwilligung_ausstehend': 'bg-yellow-100 text-yellow-900 dark:bg-yellow-900/30 dark:text-yellow-300',
   'Anruf läuft': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
   'Voicemail': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
   'Follow-up': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',

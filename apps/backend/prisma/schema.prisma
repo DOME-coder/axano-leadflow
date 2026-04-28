@@ -25,10 +25,10 @@ model Benutzer {
   erstelltAm     DateTime  @default(now()) @map("erstellt_am")
   aktualisiertAm DateTime  @updatedAt @map("aktualisiert_am")
 
-  kampagnen  Kampagne[]
-  leads      Lead[]              @relation("ZugewiesenAn")
-  notizen    LeadNotiz[]
-  einladung  BenutzerEinladung?
+  kampagnen Kampagne[]
+  leads     Lead[]             @relation("ZugewiesenAn")
+  notizen   LeadNotiz[]
+  einladung BenutzerEinladung?
 
   @@index([kundeId])
   @@map("benutzer")
@@ -55,62 +55,67 @@ model BenutzerEinladung {
 }
 
 model Kampagne {
-  id                   String          @id @default(uuid())
-  name                 String
-  beschreibung         String?
-  status               KampagnenStatus @default(aktiv)
-  triggerTyp            TriggerTyp      @map("trigger_typ")
-  triggerKonfiguration  Json            @default("{}") @map("trigger_konfiguration")
-  webhookSlug          String?         @unique @map("webhook_slug")
-  pipelineSpalten      Json            @default("[\"Neu\",\"Anruf läuft\",\"Voicemail\",\"Follow-up\",\"Nicht erreichbar\",\"Falsche Nummer\",\"Nicht interessiert\",\"Termin gebucht\"]") @map("pipeline_spalten")
-  vapiAktiviert         Boolean         @default(false) @map("vapi_aktiviert")
-  istDemoVerfuegbar    Boolean         @default(false) @map("ist_demo_verfuegbar")
-  vapiAssistantId       String?         @map("vapi_assistant_id")
-  vapiPhoneNumberId     String?         @map("vapi_phone_number_id")
-  vapiPrompt            String?         @map("vapi_prompt") @db.Text
-  vapiErsteBotschaft    String?         @map("vapi_erste_botschaft") @db.Text
-  vapiVoicemailNachricht String?        @map("vapi_voicemail_nachricht") @db.Text
-  vapiVoiceId           String?         @map("vapi_voice_id")
-  maxAnrufVersuche      Int             @default(11) @map("max_anruf_versuche")
-  anrufZeitslots        Json            @default("[{\"stunde\":9,\"minute\":0},{\"stunde\":12,\"minute\":30},{\"stunde\":17,\"minute\":0},{\"stunde\":18,\"minute\":0},{\"stunde\":19,\"minute\":0}]") @map("anruf_zeitslots")
-  emailAktiviert        Boolean         @default(true) @map("email_aktiviert")
-  whatsappAktiviert     Boolean         @default(false) @map("whatsapp_aktiviert")
-  benachrichtigungEmail String?         @map("benachrichtigung_email")
-  calendlyLink          String?         @map("calendly_link")
-  branche               String?
-  produkt               String?         @db.Text
-  zielgruppe            String?         @db.Text
-  ton                   String?
-  kiName                String?         @map("ki_name")
-  kiGeschlecht          String?         @map("ki_geschlecht")
-  kiSprachstil          String?         @map("ki_sprachstil")
-  emailTemplateVerpasst       String?  @map("email_template_verpasst")
-  emailTemplateVoicemail      String?  @map("email_template_voicemail")
-  emailTemplateUnerreichbar   String?  @map("email_template_unerreichbar")
-  emailTemplateTerminBestaetigung String? @map("email_template_termin_bestaetigung")
-  emailTemplateRueckruf       String?  @map("email_template_rueckruf")
-  emailTemplateNichtInteressiert String? @map("email_template_nicht_interessiert")
-  whatsappTemplateVerpasst  String?    @map("whatsapp_template_verpasst")
-  whatsappTemplateUnerreichbar String? @map("whatsapp_template_unerreichbar")
-  whatsappTemplateNichtInteressiert String? @map("whatsapp_template_nicht_interessiert")
-  whatsappKanalId           String?    @map("whatsapp_kanal_id")
+  id                                       String          @id @default(uuid())
+  name                                     String
+  beschreibung                             String?
+  status                                   KampagnenStatus @default(aktiv)
+  triggerTyp                               TriggerTyp      @map("trigger_typ")
+  triggerKonfiguration                     Json            @default("{}") @map("trigger_konfiguration")
+  webhookSlug                              String?         @unique @map("webhook_slug")
+  pipelineSpalten                          Json            @default("[\"Neu\",\"Anruf läuft\",\"Voicemail\",\"Follow-up\",\"Nicht erreichbar\",\"Falsche Nummer\",\"Nicht interessiert\",\"Termin gebucht\"]") @map("pipeline_spalten")
+  vapiAktiviert                            Boolean         @default(false) @map("vapi_aktiviert")
+  istDemoVerfuegbar                        Boolean         @default(false) @map("ist_demo_verfuegbar")
+  vapiAssistantId                          String?         @map("vapi_assistant_id")
+  vapiPhoneNumberId                        String?         @map("vapi_phone_number_id")
+  vapiPrompt                               String?         @map("vapi_prompt") @db.Text
+  vapiErsteBotschaft                       String?         @map("vapi_erste_botschaft") @db.Text
+  vapiVoicemailNachricht                   String?         @map("vapi_voicemail_nachricht") @db.Text
+  vapiVoiceId                              String?         @map("vapi_voice_id")
+  maxAnrufVersuche                         Int             @default(11) @map("max_anruf_versuche")
+  anrufZeitslots                           Json            @default("[{\"stunde\":9,\"minute\":0},{\"stunde\":12,\"minute\":30},{\"stunde\":17,\"minute\":0},{\"stunde\":18,\"minute\":0},{\"stunde\":19,\"minute\":0}]") @map("anruf_zeitslots")
+  emailAktiviert                           Boolean         @default(true) @map("email_aktiviert")
+  whatsappAktiviert                        Boolean         @default(false) @map("whatsapp_aktiviert")
+  benachrichtigungEmail                    String?         @map("benachrichtigung_email")
+  calendlyLink                             String?         @map("calendly_link")
+  branche                                  String?
+  produkt                                  String?         @db.Text
+  zielgruppe                               String?         @db.Text
+  ton                                      String?
+  // B2C: ohne nachweisbares Opt-in sind automatische Werbeanrufe rechtswidrig (UWG §7 Abs. 2 Nr. 1).
+  // Wenn true: Lead ohne einwilligungAm landet in Status "Einwilligung_ausstehend" und es wird
+  // KEIN Anruf gestartet, bis manuell freigegeben wird. Default ist false (opt-in pro Kampagne),
+  // bis das Admin-UI einen Freigabe-Button bereitstellt.
+  einwilligungErforderlich                 Boolean         @default(false) @map("einwilligung_erforderlich")
+  kiName                                   String?         @map("ki_name")
+  kiGeschlecht                             String?         @map("ki_geschlecht")
+  kiSprachstil                             String?         @map("ki_sprachstil")
+  emailTemplateVerpasst                    String?         @map("email_template_verpasst")
+  emailTemplateVoicemail                   String?         @map("email_template_voicemail")
+  emailTemplateUnerreichbar                String?         @map("email_template_unerreichbar")
+  emailTemplateTerminBestaetigung          String?         @map("email_template_termin_bestaetigung")
+  emailTemplateRueckruf                    String?         @map("email_template_rueckruf")
+  emailTemplateNichtInteressiert           String?         @map("email_template_nicht_interessiert")
+  whatsappTemplateVerpasst                 String?         @map("whatsapp_template_verpasst")
+  whatsappTemplateUnerreichbar             String?         @map("whatsapp_template_unerreichbar")
+  whatsappTemplateNichtInteressiert        String?         @map("whatsapp_template_nicht_interessiert")
+  whatsappKanalId                          String?         @map("whatsapp_kanal_id")
   // WhatsApp-Anbieter: "superchat" (Standard, bestehend) oder "meta" (offizielle WhatsApp Business Cloud API)
-  whatsappAnbieter          String     @default("superchat") @map("whatsapp_anbieter")
-  whatsappMetaPhoneNumberId String?    @map("whatsapp_meta_phone_number_id")
-  whatsappTemplateVerpasstName      String? @map("whatsapp_template_verpasst_name")
-  whatsappTemplateVerpasstSprache   String? @default("de") @map("whatsapp_template_verpasst_sprache")
-  whatsappTemplateUnerreichbarName  String? @map("whatsapp_template_unerreichbar_name")
-  whatsappTemplateUnerreichbarSprache String? @default("de") @map("whatsapp_template_unerreichbar_sprache")
-  whatsappTemplateNichtInteressiertName   String? @map("whatsapp_template_nicht_interessiert_name")
-  whatsappTemplateNichtInteressiertSprache String? @default("de") @map("whatsapp_template_nicht_interessiert_sprache")
-  geloescht            Boolean         @default(false)
-  geloeschtAm          DateTime?       @map("geloescht_am")
-  erstelltVon          String?         @map("erstellt_von")
-  ersteller            Benutzer?       @relation(fields: [erstelltVon], references: [id])
-  kundeId              String?         @map("kunde_id")
-  kunde                Kunde?          @relation(fields: [kundeId], references: [id])
-  erstelltAm           DateTime        @default(now()) @map("erstellt_am")
-  aktualisiertAm       DateTime        @updatedAt @map("aktualisiert_am")
+  whatsappAnbieter                         String          @default("superchat") @map("whatsapp_anbieter")
+  whatsappMetaPhoneNumberId                String?         @map("whatsapp_meta_phone_number_id")
+  whatsappTemplateVerpasstName             String?         @map("whatsapp_template_verpasst_name")
+  whatsappTemplateVerpasstSprache          String?         @default("de") @map("whatsapp_template_verpasst_sprache")
+  whatsappTemplateUnerreichbarName         String?         @map("whatsapp_template_unerreichbar_name")
+  whatsappTemplateUnerreichbarSprache      String?         @default("de") @map("whatsapp_template_unerreichbar_sprache")
+  whatsappTemplateNichtInteressiertName    String?         @map("whatsapp_template_nicht_interessiert_name")
+  whatsappTemplateNichtInteressiertSprache String?         @default("de") @map("whatsapp_template_nicht_interessiert_sprache")
+  geloescht                                Boolean         @default(false)
+  geloeschtAm                              DateTime?       @map("geloescht_am")
+  erstelltVon                              String?         @map("erstellt_von")
+  ersteller                                Benutzer?       @relation(fields: [erstelltVon], references: [id])
+  kundeId                                  String?         @map("kunde_id")
+  kunde                                    Kunde?          @relation(fields: [kundeId], references: [id])
+  erstelltAm                               DateTime        @default(now()) @map("erstellt_am")
+  aktualisiertAm                           DateTime        @updatedAt @map("aktualisiert_am")
 
   felder            KampagnenFeld[]
   leads             Lead[]
@@ -120,16 +125,16 @@ model Kampagne {
 }
 
 model Kunde {
-  id              String    @id @default(uuid())
-  name            String
-  kontaktperson   String?
-  email           String?
-  telefon         String?
-  branche         String?
-  notizen         String?   @db.Text
-  erstelltVon     String?   @map("erstellt_von")
-  erstelltAm      DateTime  @default(now()) @map("erstellt_am")
-  aktualisiertAm  DateTime  @updatedAt @map("aktualisiert_am")
+  id             String   @id @default(uuid())
+  name           String
+  kontaktperson  String?
+  email          String?
+  telefon        String?
+  branche        String?
+  notizen        String?  @db.Text
+  erstelltVon    String?  @map("erstellt_von")
+  erstelltAm     DateTime @default(now()) @map("erstellt_am")
+  aktualisiertAm DateTime @updatedAt @map("aktualisiert_am")
 
   kampagnen     Kampagne[]
   integrationen KundenIntegration[]
@@ -168,15 +173,15 @@ enum TriggerTyp {
 }
 
 model KampagnenFeld {
-  id          String  @id @default(uuid())
-  kampagneId  String  @map("kampagne_id")
+  id          String   @id @default(uuid())
+  kampagneId  String   @map("kampagne_id")
   kampagne    Kampagne @relation(fields: [kampagneId], references: [id], onDelete: Cascade)
   feldname    String
   bezeichnung String
   feldtyp     FeldTyp
-  pflichtfeld Boolean @default(false)
+  pflichtfeld Boolean  @default(false)
   optionen    Json?
-  reihenfolge Int     @default(0)
+  reihenfolge Int      @default(0)
   platzhalter String?
   hilfetext   String?
   erstelltAm  DateTime @default(now()) @map("erstellt_am")
@@ -199,30 +204,36 @@ enum FeldTyp {
 }
 
 model Lead {
-  id             String    @id @default(uuid())
-  kampagneId     String    @map("kampagne_id")
-  kampagne       Kampagne  @relation(fields: [kampagneId], references: [id])
-  zugewiesenAn   String?   @map("zugewiesen_an")
-  zugewiesener   Benutzer? @relation("ZugewiesenAn", fields: [zugewiesenAn], references: [id])
-  vorname        String?
-  nachname       String?
-  email          String?
-  telefon        String?
-  status         String    @default("Neu")
-  quelle         String?
-  duplikatVon    String?   @map("duplikat_von")
-  istDuplikat    Boolean   @default(false) @map("ist_duplikat")
-  geloescht      Boolean   @default(false)
-  geloeschtAm    DateTime? @map("geloescht_am")
-  rohdaten              Json?
-  anrufVersucheAnzahl   Int       @default(0) @map("anruf_versuche_anzahl")
-  letzterAnrufAm        DateTime? @map("letzter_anruf_am")
-  naechsterAnrufAm      DateTime? @map("naechster_anruf_am")
-  gptZusammenfassung    String?   @map("gpt_zusammenfassung")
-  gptVerdict            String?   @map("gpt_verdict")
-  vapiCallId            String?   @map("vapi_call_id")
-  erstelltAm     DateTime  @default(now()) @map("erstellt_am")
-  aktualisiertAm DateTime  @updatedAt @map("aktualisiert_am")
+  id                  String    @id @default(uuid())
+  kampagneId          String    @map("kampagne_id")
+  kampagne            Kampagne  @relation(fields: [kampagneId], references: [id])
+  zugewiesenAn        String?   @map("zugewiesen_an")
+  zugewiesener        Benutzer? @relation("ZugewiesenAn", fields: [zugewiesenAn], references: [id])
+  vorname             String?
+  nachname            String?
+  email               String?
+  telefon             String?
+  status              String    @default("Neu")
+  quelle              String?
+  duplikatVon         String?   @map("duplikat_von")
+  istDuplikat         Boolean   @default(false) @map("ist_duplikat")
+  geloescht           Boolean   @default(false)
+  geloeschtAm         DateTime? @map("geloescht_am")
+  rohdaten            Json?
+  // DSGVO Art. 6 Abs. 1 lit. a / UWG §7 Abs. 2 Nr. 1: Nachweis der Einwilligung in
+  // automatisierte Telefon-/WhatsApp-Werbung. Pflicht fuer B2C-Leads vor dem ersten Anruf.
+  einwilligungAm      DateTime? @map("einwilligung_am")
+  einwilligungQuelle  String?   @map("einwilligung_quelle")
+  einwilligungIp      String?   @map("einwilligung_ip")
+  einwilligungText    String?   @map("einwilligung_text") @db.Text
+  anrufVersucheAnzahl Int       @default(0) @map("anruf_versuche_anzahl")
+  letzterAnrufAm      DateTime? @map("letzter_anruf_am")
+  naechsterAnrufAm    DateTime? @map("naechster_anruf_am")
+  gptZusammenfassung  String?   @map("gpt_zusammenfassung")
+  gptVerdict          String?   @map("gpt_verdict")
+  vapiCallId          String?   @map("vapi_call_id")
+  erstelltAm          DateTime  @default(now()) @map("erstellt_am")
+  aktualisiertAm      DateTime  @updatedAt @map("aktualisiert_am")
 
   felddaten      LeadFelddatum[]
   statusHistorie LeadStatusHistorie[]
@@ -251,26 +262,26 @@ model LeadFelddatum {
 }
 
 model LeadStatusHistorie {
-  id           String    @id @default(uuid())
-  leadId       String    @map("lead_id")
-  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  alterStatus  String?   @map("alter_status")
-  neuerStatus  String    @map("neuer_status")
-  geaendertVon String?   @map("geaendert_von")
+  id           String   @id @default(uuid())
+  leadId       String   @map("lead_id")
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  alterStatus  String?  @map("alter_status")
+  neuerStatus  String   @map("neuer_status")
+  geaendertVon String?  @map("geaendert_von")
   grund        String?
-  erstelltAm   DateTime  @default(now()) @map("erstellt_am")
+  erstelltAm   DateTime @default(now()) @map("erstellt_am")
 
   @@map("lead_status_historie")
 }
 
 model LeadNotiz {
-  id          String    @id @default(uuid())
-  leadId      String    @map("lead_id")
-  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  autorId     String?   @map("autor_id")
-  autor       Benutzer? @relation(fields: [autorId], references: [id])
-  inhalt      String
-  erstelltAm  DateTime  @default(now()) @map("erstellt_am")
+  id           String    @id @default(uuid())
+  leadId       String    @map("lead_id")
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  autorId      String?   @map("autor_id")
+  autor        Benutzer? @relation(fields: [autorId], references: [id])
+  inhalt       String
+  erstelltAm   DateTime  @default(now()) @map("erstellt_am")
   bearbeitetAm DateTime? @map("bearbeitet_am")
 
   @@map("lead_notizen")
@@ -402,7 +413,7 @@ model Termin {
   beginnAm     DateTime      @map("beginn_am")
   endeAm       DateTime?     @map("ende_am")
   quelle       TerminQuelle?
-  externeId    String?       @map("externe_id")
+  externeId    String?       @unique @map("externe_id")
   meetingLink  String?       @map("meeting_link")
   teilnehmer   Json?
   erstelltAm   DateTime      @default(now()) @map("erstellt_am")
@@ -472,16 +483,16 @@ enum AnrufErgebnis {
 }
 
 model PromptVorlage {
-  id              String    @id @default(uuid())
-  name            String
-  beschreibung    String?
-  branche         String
-  produkt         String?
-  vapiPrompt      String    @map("vapi_prompt") @db.Text
-  version         Int       @default(1)
-  erstelltVon     String?   @map("erstellt_von")
-  erstelltAm      DateTime  @default(now()) @map("erstellt_am")
-  aktualisiertAm  DateTime  @updatedAt @map("aktualisiert_am")
+  id             String   @id @default(uuid())
+  name           String
+  beschreibung   String?
+  branche        String
+  produkt        String?
+  vapiPrompt     String   @map("vapi_prompt") @db.Text
+  version        Int      @default(1)
+  erstelltVon    String?  @map("erstellt_von")
+  erstelltAm     DateTime @default(now()) @map("erstellt_am")
+  aktualisiertAm DateTime @updatedAt @map("aktualisiert_am")
 
   @@map("prompt_vorlagen")
 }

@@ -1262,8 +1262,9 @@ function berlinDatumErzeugen(jahr: number, monat: number, tag: number, stunde: n
 /**
  * Berechnet die nächste Anrufzeit basierend auf Zeitslots.
  * Alle Berechnungen erfolgen in Europe/Berlin und sind unabhängig von der Server-Zeitzone.
+ * Exportiert fuer Tests.
  */
-function naechsteAnrufzeitBerechnen(zeitslots?: AnrufZeitslot[]): Date {
+export function naechsteAnrufzeitBerechnen(zeitslots?: AnrufZeitslot[]): Date {
   const jetzt = new Date();
   const slots = zeitslots?.length ? zeitslots : [
     { stunde: 9, minute: 0 },
@@ -1277,11 +1278,20 @@ function naechsteAnrufzeitBerechnen(zeitslots?: AnrufZeitslot[]): Date {
   const berlin = berlinZeitKomponenten(jetzt);
   const aktuelleMinuten = berlin.stunde * 60 + berlin.minute;
 
-  // Hilfsfunktion: Slot an einem bestimmten Berlin-Tag (relativ zum heutigen) erzeugen
+  // Hilfsfunktion: Slot an einem bestimmten Berlin-Tag (relativ zum heutigen) erzeugen.
+  // Faellt das Ziel-Datum auf ein Wochenende (Sa/So), wird auf den naechsten Werktag
+  // (Montag) weitergerollt — sonst wuerde z.B. Freitag 22:00 zu Samstag 09:00 (UWG-Verstoss).
   const slotAnTag = (tageVerschiebung: number, slot: AnrufZeitslot): Date => {
-    // Tag-Verschiebung über UTC-Datum, dann zurück in Berlin-Komponenten
-    const verschoben = new Date(Date.UTC(berlin.jahr, berlin.monat, berlin.tag + tageVerschiebung));
-    const verschobenKomp = berlinZeitKomponenten(verschoben);
+    let v = tageVerschiebung;
+    let verschobenKomp = berlinZeitKomponenten(
+      new Date(Date.UTC(berlin.jahr, berlin.monat, berlin.tag + v)),
+    );
+    while (verschobenKomp.wochentag === 0 || verschobenKomp.wochentag === 6) {
+      v += 1;
+      verschobenKomp = berlinZeitKomponenten(
+        new Date(Date.UTC(berlin.jahr, berlin.monat, berlin.tag + v)),
+      );
+    }
     return berlinDatumErzeugen(
       verschobenKomp.jahr,
       verschobenKomp.monat,
