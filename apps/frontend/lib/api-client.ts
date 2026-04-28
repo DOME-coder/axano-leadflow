@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useToastStore } from '@/stores/toast-store';
 
 const API_BASIS_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
@@ -20,7 +21,18 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response-Interceptor: Token-Erneuerung
+// Response-Interceptor: Token-Erneuerung bei 401, Toast bei 403
+// Toast wird mehrfach kurz hintereinander gedrosselt (sonst Spam bei React-Query-Retries
+// auf Listen-Endpoints mit 403)
+let letzterFehlerToast = 0;
+function fehlerToastEinmalig(nachricht: string) {
+  if (typeof window === 'undefined') return;
+  const jetzt = Date.now();
+  if (jetzt - letzterFehlerToast < 3000) return;
+  letzterFehlerToast = jetzt;
+  useToastStore.getState().toastAnzeigen('fehler', nachricht);
+}
+
 apiClient.interceptors.response.use(
   (antwort) => antwort,
   async (fehler) => {
@@ -45,6 +57,14 @@ apiClient.interceptors.response.use(
           window.location.replace('/anmelden');
         }
       }
+    }
+
+    // 403: kein Zugriff. Sanftes UX-Feedback per Toast — kein Redirect, weil
+    // manche Workflows legitim 403 ausloesen (z.B. Probe-Aufrufe). Backend-Nachricht
+    // bevorzugen, wenn vorhanden.
+    if (fehler.response?.status === 403) {
+      const backendNachricht = fehler.response?.data?.fehler || fehler.response?.data?.message;
+      fehlerToastEinmalig(backendNachricht || 'Du hast keinen Zugriff auf diese Aktion.');
     }
 
     return Promise.reject(fehler);
