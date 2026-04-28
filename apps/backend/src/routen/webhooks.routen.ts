@@ -151,8 +151,15 @@ webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Respons
         logger.warn('Facebook-Webhook ohne x-hub-signature-256-Header abgelehnt');
         throw new AppFehler('Fehlende Signatur', 401, 'FB_SIGNATUR_FEHLT');
       }
-      const rohDaten = JSON.stringify(req.body);
-      if (!webhookSignaturVerifizieren(rohDaten, fbSignatur, fbGeheimnis)) {
+      // WICHTIG: Signatur ueber den ROHEN Body pruefen, nicht ueber das von
+      // Express geparste + neu serialisierte JSON. Sonst schlaegt die Pruefung
+      // fehl, sobald Meta auch nur ein anderes Whitespace-Format nutzt.
+      const rohBody = (req as Request & { rawBody?: string }).rawBody;
+      if (!rohBody) {
+        logger.error('Facebook-Webhook: rawBody fehlt — Signatur kann nicht geprueft werden');
+        throw new AppFehler('Server-Konfigurationsfehler', 500, 'FB_RAWBODY_FEHLT');
+      }
+      if (!webhookSignaturVerifizieren(rohBody, fbSignatur, fbGeheimnis)) {
         throw new AppFehler('Ungültige Facebook-Signatur', 401, 'FB_SIGNATUR_UNGUELTIG');
       }
     }
