@@ -107,7 +107,12 @@ webhooksRouter.post('/:kampagneSlug', async (req: Request, res: Response, next: 
 // ──────────────────────────────────────────────
 // Facebook Lead Ads
 // ──────────────────────────────────────────────
-webhooksRouter.get('/facebook/verify', (req: Request, res: Response) => {
+// Verify-Handshake fuer Facebook Lead Ads.
+// Meta erwartet, dass Verify-GET und Lead-POST unter DERSELBEN URL laufen.
+// Deshalb akzeptieren wir den Verify sowohl unter dem Legacy-Pfad /facebook/verify
+// als auch unter /facebook/:kampagneSlug — letzteres ist die URL, die in der
+// Meta-App fuer eine konkrete Kampagne eingetragen wird.
+const facebookVerifyHandler = (req: Request, res: Response): void => {
   const verifyToken = process.env.FACEBOOK_VERIFY_TOKEN;
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -118,7 +123,10 @@ webhooksRouter.get('/facebook/verify', (req: Request, res: Response) => {
   } else {
     res.status(403).send('Verifikation fehlgeschlagen');
   }
-});
+};
+
+webhooksRouter.get('/facebook/verify', facebookVerifyHandler);
+webhooksRouter.get('/facebook/:kampagneSlug', facebookVerifyHandler);
 
 webhooksRouter.post('/facebook/:kampagneSlug', async (req: Request, res: Response, next: NextFunction) => {
   try {
