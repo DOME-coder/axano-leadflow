@@ -30,6 +30,7 @@ import { termineRouter } from './routen/termine.routen';
 import { testRouter } from './routen/test.routen';
 import { kundenIntegrationenRouter } from './routen/kunden-integrationen.routen';
 import { oauthRouter } from './routen/oauth.routen';
+import { abmeldenRouter } from './routen/abmelden.routen';
 import { socketServerInitialisieren } from './websocket/socket.handler';
 import { workerStarten } from './jobs/automatisierung.job';
 import { emailPollingStarten } from './jobs/email-polling.job';
@@ -126,6 +127,7 @@ app.use('/api/v1/oauth', oauthRouter);
 app.use('/api/v1/test', testRouter);
 app.use('/api/v1/webhooks', webhooksRouter);
 app.use('/api/v1/demo', demoRouter);
+app.use('/api/v1/abmelden', abmeldenRouter);
 
 // Sentry-Error-Handler vor globaler Fehlerbehandlung (nur wirksam wenn SENTRY_DSN gesetzt)
 Sentry.setupExpressErrorHandler(app);

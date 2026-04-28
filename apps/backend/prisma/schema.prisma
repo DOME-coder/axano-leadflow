@@ -226,6 +226,11 @@ model Lead {
   einwilligungQuelle  String?   @map("einwilligung_quelle")
   einwilligungIp      String?   @map("einwilligung_ip")
   einwilligungText    String?   @map("einwilligung_text") @db.Text
+  // E-Mail-Abmeldung (TMG §7 + DSGVO Art. 21). Wenn emailAbgemeldetAm gesetzt ist,
+  // wird KEINE weitere Mail an den Lead versendet. emailAbmeldeToken ist ein per-Lead
+  // eindeutiger, schwer erratbarer Token fuer den Abmelde-Link in jeder Mail.
+  emailAbmeldeToken   String?   @unique @map("email_abmelde_token")
+  emailAbgemeldetAm   DateTime? @map("email_abgemeldet_am")
   anrufVersucheAnzahl Int       @default(0) @map("anruf_versuche_anzahl")
   letzterAnrufAm      DateTime? @map("letzter_anruf_am")
   naechsterAnrufAm    DateTime? @map("naechster_anruf_am")

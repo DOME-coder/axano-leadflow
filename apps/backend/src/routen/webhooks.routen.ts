@@ -525,7 +525,17 @@ webhooksRouter.post('/vapi', async (req: Request, res: Response, next: NextFunct
 // ──────────────────────────────────────────────
 // Calendly Webhook
 // ──────────────────────────────────────────────
-webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextFunction) => {
+// Zwei Pfade:
+//   POST /webhooks/calendly                 — Legacy (single-tenant), Lead-Lookup global
+//   POST /webhooks/calendly/:kampagneSlug   — Neu (multi-tenant), Lead-Lookup auf Kampagne eingeschraenkt
+// Empfehlung: bestehende Calendly-Webhooks in der Calendly-UI auf den Slug-Pfad umstellen,
+// sobald mehrere Kunden parallel Calendly nutzen.
+async function calendlyWebhookVerarbeiten(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  kampagneSlug?: string,
+) {
   try {
     const body = req.body;
     const eventTyp = body.event;
@@ -608,15 +618,38 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
     }
 
     // Lead erst NACH erfolgreicher Signatur-Pruefung suchen.
+    // Wenn kampagneSlug gegeben: Lookup auf diese Kampagne einschraenken (Multi-Tenant-Schutz).
+    // Wenn kein Slug: Legacy-Verhalten — global suchen + Warning loggen.
+    let kampagneIdFilter: string | undefined;
+    if (kampagneSlug) {
+      const kampagneAusSlug = await prisma.kampagne.findUnique({
+        where: { webhookSlug: kampagneSlug },
+        select: { id: true, geloescht: true },
+      });
+      if (!kampagneAusSlug || kampagneAusSlug.geloescht) {
+        logger.warn(`Calendly Webhook: Kampagnen-Slug "${kampagneSlug}" nicht gefunden oder geloescht`);
+        res.status(404).json({ erfolg: false, fehler: 'Kampagne nicht gefunden' });
+        return;
+      }
+      kampagneIdFilter = kampagneAusSlug.id;
+    } else {
+      logger.warn('Calendly Webhook: Legacy-Pfad ohne Kampagnen-Slug — Lead-Lookup ist global. Bitte Calendly-URL auf /webhooks/calendly/<slug> umstellen.');
+    }
+
+    const leadFilterBasis = {
+      geloescht: false,
+      ...(kampagneIdFilter ? { kampagneId: kampagneIdFilter } : {}),
+    };
+
     let lead = email ? await prisma.lead.findFirst({
-      where: { geloescht: false, email },
+      where: { ...leadFilterBasis, email },
       orderBy: { erstelltAm: 'desc' },
       include: { kampagne: { select: { kundeId: true } } },
     }) : null;
 
     if (!lead && telefonAusFormular) {
       lead = await prisma.lead.findFirst({
-        where: { geloescht: false, telefon: { contains: telefonAusFormular.replace(/^\+49/, '').replace(/^0/, '') } },
+        where: { ...leadFilterBasis, telefon: { contains: telefonAusFormular.replace(/^\+49/, '').replace(/^0/, '') } },
         orderBy: { erstelltAm: 'desc' },
         include: { kampagne: { select: { kundeId: true } } },
       });
@@ -761,6 +794,16 @@ webhooksRouter.post('/calendly', async (req: Request, res: Response, next: NextF
   } catch (fehler) {
     next(fehler);
   }
+}
+
+// Legacy-Pfad (rueckwaertskompatibel): kein Slug, Lead-Lookup global
+webhooksRouter.post('/calendly', (req: Request, res: Response, next: NextFunction) => {
+  return calendlyWebhookVerarbeiten(req, res, next);
+});
+
+// Neuer Pfad: Slug eindeutig pro Kampagne, Lead-Lookup auf Kampagne eingeschraenkt
+webhooksRouter.post('/calendly/:kampagneSlug', (req: Request, res: Response, next: NextFunction) => {
+  return calendlyWebhookVerarbeiten(req, res, next, req.params.kampagneSlug);
 });
 
 function extrahiere(obj: Record<string, unknown>, schluessel: string[]): string | undefined {
