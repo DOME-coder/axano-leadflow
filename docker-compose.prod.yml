@@ -59,6 +59,9 @@ services:
       - FACEBOOK_APP_ID=${FACEBOOK_APP_ID:-}
       - FACEBOOK_VERIFY_TOKEN=${FACEBOOK_VERIFY_TOKEN:-}
       - FACEBOOK_APP_GEHEIMNIS=${FACEBOOK_APP_GEHEIMNIS:-}
+      # Sentry — wenn SENTRY_DSN nicht gesetzt ist, bleibt Sentry still (siehe sentry.ts).
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
     depends_on:
       postgres:
         condition: service_healthy
