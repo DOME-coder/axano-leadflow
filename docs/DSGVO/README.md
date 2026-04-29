@@ -4,6 +4,12 @@ Verzeichnis aller datenschutzrechtlichen Dokumente für Axano LeadFlow.
 Hier abgelegt zur Versionierung und damit sie bei Audits, Anwaltsterminen oder
 Behördenanfragen schnell auffindbar sind.
 
+> **Hinweis Repo-Sichtbarkeit:** Dieses Repository ist aktuell öffentlich (GitHub).
+> Daher gilt: Hier landen nur Dokumente, die **ohnehin öffentlich sein müssen
+> oder dürfen** — Strukturdokumente (VVT, TIA, Datenschutzerklärung, Impressum).
+> Sensible Anhänge gehören in den internen Drive (Notion/Google Drive), nicht
+> in dieses Repo. Siehe Abschnitt „Was NICHT hierher" unten.
+
 ## Vorhandene Dokumente
 
 | Dokument | Datei | Stand | Status |
@@ -18,6 +24,18 @@ Behördenanfragen schnell auffindbar sind.
 - **Datenschutzerklärung** für die öffentliche Plattform (`/datenschutz`). Anwaltsentwurf abwarten.
 - **Impressum** für die öffentliche Plattform (`/impressum`). Anwaltsentwurf abwarten.
 - **Einwilligungs-Wortlaut** für Kunden-Werbeformulare (UWG §7 Abs. 2 Nr. 1). Anwaltsempfehlung abwarten.
+
+## Was NICHT hierher gehört (interner Drive)
+
+Folgende Dokumente sind **vertraulich** und gehören in den internen Drive
+(z.B. Notion-Workspace „Axano / Recht / DSGVO"), **nicht** in dieses Repo:
+
+- **Signierte AV-Verträge** mit Drittanbietern (enthalten Vertragsnummern, Account-IDs)
+- **Anwaltstexte vor Veröffentlichung** (Mandantengeheimnis)
+- **Konkrete Kundendaten** (Cannito-Verträge, Lead-Listen, Umsatzzahlen)
+- **API-Keys, Passwörter, Tokens** — niemals, auch nicht in Beispielen oder Snippets
+- **Echte Test-Datensätze** mit unmaskierten Telefonnummern oder E-Mail-Adressen
+- **Sentry-DSN, VAPI-Webhook-Secret** — gehören in Coolify-Env, nicht ins Repo
 
 ## Pflege
 
