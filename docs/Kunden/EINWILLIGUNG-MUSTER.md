@@ -25,7 +25,7 @@ Vertrag, [`../Vertraege/README.md`](../Vertraege/README.md)).
 > (als technischer Dienstleister im Auftrag von **[Firmenname]**), mich zum Zwecke
 > der Beratung bezüglich **[Produkt/Thema]** kontaktieren dürfen — und zwar:
 >
-> - per Telefon (auch mittels automatisierter KI-Anrufsysteme)
+> - per Telefon (auch mittels automatisierter KI-Anrufsysteme), zu üblichen Werktagszeiten
 > - per WhatsApp
 > - per E-Mail
 >
@@ -37,6 +37,12 @@ Vertrag, [`../Vertraege/README.md`](../Vertraege/README.md)).
 >
 > Ich habe die **[Datenschutzerklärung von [Firmenname]]** sowie die Datenschutzerklärung
 > der Axano GmbH (https://axano.com/datenschutz) zur Kenntnis genommen.
+
+> ⚠️ **Wichtig — Anwendungsregel für den Werbetreibenden:**
+> Die Einwilligung muss als **Pflicht-Checkbox** dargestellt werden, die der
+> Lead **aktiv anklicken** muss. Eine bereits vorausgewählte Checkbox ist nach
+> EuGH-Urteil C-673/17 („Planet49") rechtswidrig — die Einwilligung wäre damit
+> unwirksam und alle daraufhin erfolgten Anrufe rechtlich angreifbar.
 
 ---
 
@@ -108,3 +114,4 @@ ein Mitarbeiter dennoch manuell prüfen und freigeben.
 | Datum | Änderung |
 |---|---|
 | 29.04.2026 | Erststellung — anwaltlich freigegeben |
+| 29.04.2026 | „zu üblichen Werktagszeiten" beim Telefon-Punkt ergänzt (UWG-Konformität explizit). Anwendungsregel zur Pflicht-Checkbox (EuGH C-673/17 „Planet49") als Warnhinweis hinzugefügt. |
