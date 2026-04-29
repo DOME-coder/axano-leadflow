@@ -2,7 +2,7 @@
 
 Übermittlungsfolgenabschätzung für Drittlandstransfers gemäß Art. 46 DSGVO
 
-**Axano GmbH** | **Stand:** 28.04.2026 | **Version:** 1.0
+**Axano GmbH** | **Stand:** 29.04.2026 | **Version:** 1.1
 
 ---
 
@@ -56,11 +56,11 @@
 - Schutzmaßnahmen: Minimierung der übertragenen PII (kein Klarname wenn vermeidbar), SCC, Anthropic-Datenschutzrichtlinien
 - **Residualrisiko: Mittel** — akzeptabel
 
-### 2.3 Sentry / Functional Software Inc. (USA)
+### 2.3 Sentry, Inc. (USA)
 
 | Feld | Wert |
 |---|---|
-| Anbieter | Functional Software Inc. (Sentry) |
+| Anbieter | Sentry, Inc. |
 | Sitz | USA |
 | Dienst | Fehlermonitoring, Crash-Reports |
 | Übertragene Daten | Technische Fehlermeldungen, Stack-Traces (können potenziell PII enthalten bei Fehlern in datentragenden Pfaden) |
@@ -130,6 +130,7 @@ Die Risiken wurden bewertet und durch folgende Maßnahmen auf ein akzeptables Ni
 | Datum | Version | Änderung |
 |---|---|---|
 | 28.04.2026 | 1.0 | Erststellung für Axano LeadFlow |
+| 29.04.2026 | 1.1 | Sentry-Firmenname auf „Sentry, Inc." korrigiert. |
 
 ---
 

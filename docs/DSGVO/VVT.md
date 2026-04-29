@@ -2,8 +2,8 @@
 
 gemäß Art. 30 DSGVO
 
-**Stand:** 28.04.2026
-**Version:** 1.0
+**Stand:** 29.04.2026
+**Version:** 1.1
 
 ---
 
@@ -58,7 +58,8 @@ Folgende Dienstleister erhalten im Rahmen der Verarbeitung Zugriff auf personenb
 | VAPI Inc. | KI-Telefonanrufe, Sprachverarbeitung | USA | Standardvertragsklauseln (SCC) gem. Art. 46 DSGVO |
 | Anthropic PBC | KI-Analyse von Gesprächstranskripten (Claude API) | USA | SCC gem. Art. 46 DSGVO + DPA |
 | Meta Platforms Ireland Ltd. | Facebook Lead Ads, WhatsApp Business API | EU (Irland) | Kein Drittlandstransfer (EU-Sitz) |
-| Sentry (Functional Software Inc.) | Fehlermonitoring, Crash-Reports | USA | SCC gem. Art. 46 DSGVO + DPA |
+| Superchat GmbH | Alternative WhatsApp-Kommunikation (kampagnenabhängig) | DE (EU) | Kein Drittlandstransfer |
+| Sentry, Inc. | Fehlermonitoring, Crash-Reports | USA | SCC gem. Art. 46 DSGVO + DPA |
 | Calendly LLC | Terminbuchung | USA | SCC gem. Art. 46 DSGVO + DPA |
 | Hetzner Online GmbH (Coolify-Hosting) | Server-Hosting, Datenbankbetrieb | DE (EU) | Kein Drittlandstransfer |
 
@@ -91,6 +92,7 @@ Folgende Dienstleister erhalten im Rahmen der Verarbeitung Zugriff auf personenb
 | Datum | Version | Änderung |
 |---|---|---|
 | 28.04.2026 | 1.0 | Erststellung für Axano LeadFlow |
+| 29.04.2026 | 1.1 | Superchat GmbH als Subprocessor ergänzt (Konsistenz mit Datenschutzerklärung §15.2). Sentry-Firmenname auf „Sentry, Inc." korrigiert. |
 
 ---
 

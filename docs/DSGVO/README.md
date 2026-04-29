@@ -17,15 +17,15 @@ Behördenanfragen schnell auffindbar sind.
 | Verzeichnis von Verarbeitungstätigkeiten (Art. 30 DSGVO) | [VVT.md](./VVT.md) | 28.04.2026 | Entwurf — Anwaltsprüfung ausstehend |
 | Transfer Impact Assessment (USA-Drittlandstransfers) | [TIA.md](./TIA.md) | 28.04.2026 | Entwurf — Anwaltsprüfung ausstehend |
 
-## Erledigt (extern abgelegt)
+## Erledigt
 
 - ✅ **Mustertext-AV-Vertrag** für Kunden von Axano (DSGVO Art. 28) — anwaltlich freigegeben 29.04.2026, liegt im internen Drive. Verweis: [`../Vertraege/README.md`](../Vertraege/README.md)
+- ✅ **Datenschutzerklärung §15 für Axano LeadFlow** — anwaltlich freigegeben 29.04.2026. Wird als Zusatzabschnitt auf https://axano.com/datenschutz eingebunden (Webteam-Veröffentlichung). Plattform `leadflow.axano.com/datenschutz` redirected automatisch dorthin (siehe [`apps/frontend/next.config.js`](../../apps/frontend/next.config.js)).
+- ✅ **Impressum** — `leadflow.axano.com/impressum` redirected auf bestehendes Impressum unter https://axano.com/impressum (selbe GmbH).
 
 ## Noch zu ergänzen
 
 - **AV-Verträge mit Drittanbietern** (DSGVO Art. 28): VAPI, Anthropic, Meta, Sentry, Coolify/Hetzner, Google (Calendar), SMTP-Provider, Calendly, Superchat. Status pro Anbieter sammeln.
-- **Datenschutzerklärung** für die öffentliche Plattform (`/datenschutz`). Anwaltsentwurf abwarten.
-- **Impressum** für die öffentliche Plattform (`/impressum`). Anwaltsentwurf abwarten.
 - **Einwilligungs-Wortlaut** für Kunden-Werbeformulare (UWG §7 Abs. 2 Nr. 1). Anwaltsempfehlung abwarten.
 
 ## Was NICHT hierher gehört (interner Drive)
