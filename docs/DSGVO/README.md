@@ -17,10 +17,13 @@ Behördenanfragen schnell auffindbar sind.
 | Verzeichnis von Verarbeitungstätigkeiten (Art. 30 DSGVO) | [VVT.md](./VVT.md) | 28.04.2026 | Entwurf — Anwaltsprüfung ausstehend |
 | Transfer Impact Assessment (USA-Drittlandstransfers) | [TIA.md](./TIA.md) | 28.04.2026 | Entwurf — Anwaltsprüfung ausstehend |
 
+## Erledigt (extern abgelegt)
+
+- ✅ **Mustertext-AV-Vertrag** für Kunden von Axano (DSGVO Art. 28) — anwaltlich freigegeben 29.04.2026, liegt im internen Drive. Verweis: [`../Vertraege/README.md`](../Vertraege/README.md)
+
 ## Noch zu ergänzen
 
 - **AV-Verträge mit Drittanbietern** (DSGVO Art. 28): VAPI, Anthropic, Meta, Sentry, Coolify/Hetzner, Google (Calendar), SMTP-Provider, Calendly, Superchat. Status pro Anbieter sammeln.
-- **Mustertext-AV-Vertrag** für Kunden von Axano (Axano als Auftragsverarbeiter). Anwaltsentwurf abwarten.
 - **Datenschutzerklärung** für die öffentliche Plattform (`/datenschutz`). Anwaltsentwurf abwarten.
 - **Impressum** für die öffentliche Plattform (`/impressum`). Anwaltsentwurf abwarten.
 - **Einwilligungs-Wortlaut** für Kunden-Werbeformulare (UWG §7 Abs. 2 Nr. 1). Anwaltsempfehlung abwarten.
