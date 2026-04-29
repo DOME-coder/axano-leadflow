@@ -20,13 +20,13 @@ Behördenanfragen schnell auffindbar sind.
 ## Erledigt
 
 - ✅ **Mustertext-AV-Vertrag** für Kunden von Axano (DSGVO Art. 28) — anwaltlich freigegeben 29.04.2026, liegt im internen Drive. Verweis: [`../Vertraege/README.md`](../Vertraege/README.md)
-- ✅ **Datenschutzerklärung §15 für Axano LeadFlow** — anwaltlich freigegeben 29.04.2026. Wird als Zusatzabschnitt auf https://axano.com/datenschutz eingebunden (Webteam-Veröffentlichung). Plattform `leadflow.axano.com/datenschutz` redirected automatisch dorthin (siehe [`apps/frontend/next.config.js`](../../apps/frontend/next.config.js)).
+- ✅ **Datenschutzerklärung §15 für Axano LeadFlow** — anwaltlich freigegeben 29.04.2026, live auf https://axano.com/datenschutz. Plattform `leadflow.axano.com/datenschutz` redirected automatisch dorthin (siehe [`apps/frontend/next.config.js`](../../apps/frontend/next.config.js)).
 - ✅ **Impressum** — `leadflow.axano.com/impressum` redirected auf bestehendes Impressum unter https://axano.com/impressum (selbe GmbH).
+- ✅ **Einwilligungs-Wortlaut für Kunden-Werbeformulare** (UWG §7 Abs. 2 Nr. 1) — anwaltlich freigegeben 29.04.2026. Mustertext: [`../Kunden/EINWILLIGUNG-MUSTER.md`](../Kunden/EINWILLIGUNG-MUSTER.md). Pro Kunde anwenden (Cannito et al.).
 
 ## Noch zu ergänzen
 
-- **AV-Verträge mit Drittanbietern** (DSGVO Art. 28): VAPI, Anthropic, Meta, Sentry, Coolify/Hetzner, Google (Calendar), SMTP-Provider, Calendly, Superchat. Status pro Anbieter sammeln.
-- **Einwilligungs-Wortlaut** für Kunden-Werbeformulare (UWG §7 Abs. 2 Nr. 1). Anwaltsempfehlung abwarten.
+- **AV-Verträge mit Drittanbietern** (DSGVO Art. 28): VAPI, Anthropic, Meta, Sentry, Coolify/Hetzner, Calendly, Superchat. Status pro Anbieter sammeln.
 
 ## Was NICHT hierher gehört (interner Drive)
 
